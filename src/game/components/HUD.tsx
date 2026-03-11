@@ -3,27 +3,36 @@ import React from 'react';
 interface HUDProps {
   depth: number;
   hull: number;
+  maxHull: number;
   power: number;
+  maxPower: number;
   oxygen: number;
+  maxOxygen: number;
   zone: string;
   engineNoise: number;
   lightOn: boolean;
   sonarReady: boolean;
   ammo: number;
+  maxAmmo: number;
   deepest: number;
   score: number;
+  coins: number;
   gameOver: boolean;
   paused: boolean;
+  killCount: Record<string, number>;
   onRestart: () => void;
+  onReturnToBase: () => void;
 }
 
 const HUD: React.FC<HUDProps> = ({
-  depth, hull, power, oxygen, zone, engineNoise, lightOn,
-  sonarReady, ammo, deepest, gameOver, paused, onRestart,
+  depth, hull, maxHull, power, maxPower, oxygen, maxOxygen,
+  zone, engineNoise, lightOn, sonarReady, ammo, maxAmmo,
+  deepest, score, coins, gameOver, paused, killCount,
+  onRestart, onReturnToBase,
 }) => {
   return (
     <div className="absolute inset-0 pointer-events-none" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
-      {/* Top bar - Zone & Depth */}
+      {/* Top bar */}
       <div
         className="absolute top-0 left-0 right-0 flex items-center justify-between px-6 py-3"
         style={{ background: 'rgba(16, 20, 24, 0.85)' }}
@@ -34,6 +43,9 @@ const HUD: React.FC<HUDProps> = ({
           </span>
           <span className="text-xs" style={{ color: '#6a7a84' }}>
             DEEPEST: {deepest}m
+          </span>
+          <span className="text-xs" style={{ color: '#ffd700' }}>
+            ◆ {coins}
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -54,7 +66,7 @@ const HUD: React.FC<HUDProps> = ({
         <span className="text-xs mb-2" style={{ color: '#6a7a84' }}>DEPTH</span>
         <div className="relative w-2 flex-1 mx-auto" style={{ background: '#1a2a3a', maxHeight: '300px' }}>
           <div
-            className="absolute bottom-0 w-full transition-none"
+            className="absolute bottom-0 w-full"
             style={{
               height: `${Math.min((depth / 8000) * 100, 100)}%`,
               background: depth > 4000 ? '#ff4500' : depth > 1000 ? '#ff8c00' : '#00bfff',
@@ -71,9 +83,9 @@ const HUD: React.FC<HUDProps> = ({
         className="absolute bottom-0 left-0 right-0 flex items-end justify-center gap-8 px-8 py-3"
         style={{ background: 'rgba(16, 20, 24, 0.85)' }}
       >
-        <TelemetryBar label="HULL" value={hull} max={100} color={hull > 60 ? '#b4c5cf' : hull > 30 ? '#ff8c00' : '#ff4500'} critical={hull <= 30} />
-        <TelemetryBar label="POWER" value={power} max={100} color={power > 30 ? '#00bfff' : '#ff8c00'} critical={power <= 15} />
-        <TelemetryBar label="O2" value={oxygen} max={100} color={oxygen > 30 ? '#00ff88' : '#ff4500'} critical={oxygen <= 15} />
+        <TelemetryBar label="HULL" value={hull} max={maxHull} color={hull / maxHull > 0.6 ? '#b4c5cf' : hull / maxHull > 0.3 ? '#ff8c00' : '#ff4500'} critical={hull / maxHull <= 0.3} />
+        <TelemetryBar label="POWER" value={power} max={maxPower} color={power / maxPower > 0.3 ? '#00bfff' : '#ff8c00'} critical={power / maxPower <= 0.15} />
+        <TelemetryBar label="O2" value={oxygen} max={maxOxygen} color={oxygen / maxOxygen > 0.3 ? '#00ff88' : '#ff4500'} critical={oxygen / maxOxygen <= 0.15} />
         <div className="flex flex-col items-center gap-1">
           <span className="text-xs" style={{ color: '#6a7a84' }}>NOISE</span>
           <div className="flex gap-0.5">
@@ -93,12 +105,12 @@ const HUD: React.FC<HUDProps> = ({
         <div className="flex flex-col items-center gap-1">
           <span className="text-xs" style={{ color: '#6a7a84' }}>HARPOON</span>
           <span className="text-sm font-bold" style={{ color: ammo > 5 ? '#b4c5cf' : '#ff4500' }}>
-            {ammo}
+            {ammo}/{maxAmmo}
           </span>
         </div>
       </div>
 
-      {/* Right panel - Controls hint */}
+      {/* Controls hint */}
       <div
         className="absolute right-0 bottom-16 px-3 py-2"
         style={{ background: 'rgba(16, 20, 24, 0.6)' }}
@@ -114,35 +126,57 @@ const HUD: React.FC<HUDProps> = ({
 
       {/* Game Over overlay */}
       {gameOver && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-auto" style={{ background: 'rgba(0, 0, 0, 0.8)' }}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-auto" style={{ background: 'rgba(0, 0, 0, 0.85)' }}>
           <h1 className="text-4xl font-bold mb-2" style={{ color: '#ff4500', fontFamily: "'IBM Plex Mono', monospace" }}>
             HULL BREACH
           </h1>
           <p className="text-lg mb-1" style={{ color: '#b4c5cf' }}>
             SUBMARINE LOST AT {depth}m
           </p>
-          <p className="text-sm mb-6" style={{ color: '#6a7a84' }}>
+          <p className="text-sm mb-2" style={{ color: '#6a7a84' }}>
             DEEPEST DESCENT: {deepest}m
           </p>
-          <button
-            onClick={onRestart}
-            className="px-8 py-3 text-sm tracking-widest uppercase border-2 hover:bg-white hover:bg-opacity-10 transition-colors"
-            style={{ color: '#b4c5cf', borderColor: '#b4c5cf', fontFamily: "'IBM Plex Mono', monospace" }}
-          >
-            LAUNCH AGAIN
-          </button>
+          <p className="text-sm mb-1" style={{ color: '#ffd700' }}>
+            COINS EARNED: ◆ {coins}
+          </p>
+          <p className="text-xs mb-6" style={{ color: '#6a7a84' }}>
+            SCORE: {score}
+          </p>
+          <div className="flex gap-4">
+            <button
+              onClick={onRestart}
+              className="px-6 py-3 text-sm tracking-widest uppercase border-2 hover:bg-white hover:bg-opacity-10 transition-colors"
+              style={{ color: '#b4c5cf', borderColor: '#b4c5cf', fontFamily: "'IBM Plex Mono', monospace" }}
+            >
+              DIVE AGAIN
+            </button>
+            <button
+              onClick={onReturnToBase}
+              className="px-6 py-3 text-sm tracking-widest uppercase border-2 hover:bg-white hover:bg-opacity-10 transition-colors"
+              style={{ color: '#ffd700', borderColor: '#ffd700', fontFamily: "'IBM Plex Mono', monospace" }}
+            >
+              RETURN TO BASE
+            </button>
+          </div>
         </div>
       )}
 
       {/* Pause overlay */}
       {paused && !gameOver && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: 'rgba(0, 0, 0, 0.6)' }}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-auto" style={{ background: 'rgba(0, 0, 0, 0.6)' }}>
           <h1 className="text-2xl font-bold" style={{ color: '#b4c5cf', fontFamily: "'IBM Plex Mono', monospace" }}>
             SYSTEMS PAUSED
           </h1>
-          <p className="text-sm mt-2" style={{ color: '#6a7a84' }}>
+          <p className="text-sm mt-2 mb-6" style={{ color: '#6a7a84' }}>
             PRESS ESC TO RESUME
           </p>
+          <button
+            onClick={onReturnToBase}
+            className="px-6 py-3 text-sm tracking-widest uppercase border-2 hover:bg-white hover:bg-opacity-10 transition-colors"
+            style={{ color: '#ffd700', borderColor: '#ffd700', fontFamily: "'IBM Plex Mono', monospace" }}
+          >
+            RETURN TO BASE
+          </button>
         </div>
       )}
     </div>
@@ -160,7 +194,7 @@ const TelemetryBar: React.FC<{
     <span className="text-xs" style={{ color: '#6a7a84' }}>{label}</span>
     <div className="w-20 h-2" style={{ background: '#1a2a3a' }}>
       <div
-        className="h-full transition-none"
+        className="h-full"
         style={{
           width: `${(value / max) * 100}%`,
           background: color,
@@ -169,7 +203,7 @@ const TelemetryBar: React.FC<{
       />
     </div>
     <span className="text-xs font-bold" style={{ color }}>
-      {value}%
+      {Math.floor(value)}/{max}
     </span>
   </div>
 );
