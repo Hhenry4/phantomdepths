@@ -71,7 +71,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
     }
 
     if (!state.paused && !state.gameOver) {
-      const { updateGame } = await import('../engine/GameLoop');
       updateGame(state, inputRef.current, 1);
     } else {
       inputRef.current.clearFrame();

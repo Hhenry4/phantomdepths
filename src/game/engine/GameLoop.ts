@@ -453,4 +453,4 @@ function spawnBiolum(state: GameState) {
   });
 }
 
-export { updateGame };
+
