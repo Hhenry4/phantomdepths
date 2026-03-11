@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { GameScreen, PlayerProgress } from '../game/types';
-import { QUESTS } from '../game/constants';
+import { QUESTS, UPGRADES } from '../game/constants';
 import GameCanvas from '../game/components/GameCanvas';
 import HomeScreen from '../game/components/HomeScreen';
 import Shop from '../game/components/Shop';
