@@ -72,7 +72,7 @@ const Index: React.FC = () => {
   const handlePurchase = useCallback((upgradeId: string) => {
     setProgress(prev => {
       const level = prev.upgrades[upgradeId] || 0;
-      const upgrade = (require('../game/constants') as any).UPGRADES.find((u: any) => u.id === upgradeId);
+      const upgrade = UPGRADES.find((u) => u.id === upgradeId);
       if (!upgrade || level >= upgrade.maxLevel) return prev;
       const cost = Math.floor(upgrade.baseCost * Math.pow(upgrade.costMultiplier, level));
       if (prev.coins < cost) return prev;
