@@ -70,9 +70,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
       state.paused = !state.paused;
     }
 
-    // Import and run update
     if (!state.paused && !state.gameOver) {
-      const { updateGame } = require('../engine/GameLoop');
+      const { updateGame } = await import('../engine/GameLoop');
       updateGame(state, inputRef.current, 1);
     } else {
       inputRef.current.clearFrame();

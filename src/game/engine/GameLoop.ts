@@ -453,7 +453,4 @@ function spawnBiolum(state: GameState) {
   });
 }
 
-export function renderGame(ctx: CanvasRenderingContext2D, state: GameState, canvasW: number, canvasH: number) {
-  const { render } = require('./Renderer');
-  render(ctx, state, canvasW, canvasH);
-}
+export { updateGame };
