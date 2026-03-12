@@ -1,17 +1,17 @@
-import React, { useState, useCallback } from 'react';
-import { GameScreen, PlayerProgress } from '../game/types';
-import { QUESTS, UPGRADES } from '../game/constants';
+import React, { useState, useCallback, useEffect } from 'react';
+import { GameScreen, PlayerProgress, WeaponType, getXpProgress, getLevelFromXp } from '../game/types';
+import { QUESTS, UPGRADES, WEAPON_SHOP } from '../game/constants';
 import GameCanvas from '../game/components/GameCanvas';
 import HomeScreen from '../game/components/HomeScreen';
 import Shop from '../game/components/Shop';
+import MultiplayerLobby from '../game/components/MultiplayerLobby';
+import Tutorial from '../game/components/Tutorial';
+import { useAuth } from '../firebase/AuthContext';
+import { saveProgressToCloud, loadProgressFromCloud } from '../firebase/saveSystem';
 
 const STORAGE_KEY = 'phantom_depths_progress';
 
-function loadProgress(): PlayerProgress {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (data) return JSON.parse(data);
-  } catch {}
+function defaultProgress(): PlayerProgress {
   return {
     coins: 0,
     upgrades: {},
@@ -19,7 +19,21 @@ function loadProgress(): PlayerProgress {
     totalKills: 0,
     questsCompleted: [],
     unlockedZones: ['sunlight'],
+    xp: 0,
+    level: 1,
+    weaponsOwned: ['harpoon'],
   };
+}
+
+function loadProgress(): PlayerProgress {
+  try {
+    const data = localStorage.getItem(STORAGE_KEY);
+    if (data) {
+      const parsed = JSON.parse(data);
+      return { ...defaultProgress(), ...parsed };
+    }
+  } catch {}
+  return defaultProgress();
 }
 
 function saveProgress(progress: PlayerProgress) {
@@ -29,17 +43,46 @@ function saveProgress(progress: PlayerProgress) {
 const Index: React.FC = () => {
   const [screen, setScreen] = useState<GameScreen>('home');
   const [progress, setProgress] = useState<PlayerProgress>(loadProgress);
+  const [showTutorial, setShowTutorial] = useState(() => !localStorage.getItem('phantom_depths_tutorial_done'));
+  const [multiplayerRoomId, setMultiplayerRoomId] = useState<string | null>(null);
+  const { user } = useAuth();
 
-  const handleGameEnd = useCallback((coins: number, deepest: number, kills: number, killCount: Record<string, number>, bossesDefeated: string[]) => {
+  // Load cloud save on login
+  useEffect(() => {
+    if (user) {
+      loadProgressFromCloud(user.uid).then(cloudProgress => {
+        if (cloudProgress) {
+          const local = loadProgress();
+          // Use whichever has more progress
+          const merged = cloudProgress.deepestEver > local.deepestEver || cloudProgress.totalKills > local.totalKills
+            ? { ...defaultProgress(), ...cloudProgress }
+            : local;
+          setProgress(merged);
+          saveProgress(merged);
+        }
+      });
+    }
+  }, [user]);
+
+  const persistProgress = useCallback((next: PlayerProgress) => {
+    saveProgress(next);
+    if (user) {
+      saveProgressToCloud(user.uid, next);
+    }
+  }, [user]);
+
+  const handleGameEnd = useCallback((coins: number, deepest: number, kills: number, killCount: Record<string, number>, bossesDefeated: string[], xpEarned: number) => {
     setProgress(prev => {
       const next = {
         ...prev,
         coins: prev.coins + coins,
         deepestEver: Math.max(prev.deepestEver, deepest),
         totalKills: prev.totalKills + kills,
+        xp: prev.xp + xpEarned,
+        level: getLevelFromXp(prev.xp + xpEarned),
       };
 
-      // Check quest completion
+      // Quest checks
       for (const quest of QUESTS) {
         if (next.questsCompleted.includes(quest.id)) continue;
         let completed = false;
@@ -50,6 +93,8 @@ const Index: React.FC = () => {
           case 'kill':
             if (quest.creatureType) {
               completed = (killCount[quest.creatureType] || 0) >= quest.target;
+            } else {
+              completed = next.totalKills >= quest.target;
             }
             break;
           case 'boss':
@@ -57,17 +102,22 @@ const Index: React.FC = () => {
               completed = bossesDefeated.includes(`${quest.zone}_boss`);
             }
             break;
+          case 'level':
+            completed = next.level >= quest.target;
+            break;
         }
         if (completed) {
-          next.questsCompleted.push(quest.id);
+          next.questsCompleted = [...next.questsCompleted, quest.id];
           next.coins += quest.reward;
+          next.xp += quest.xpReward;
+          next.level = getLevelFromXp(next.xp);
         }
       }
 
-      saveProgress(next);
+      persistProgress(next);
       return next;
     });
-  }, []);
+  }, [persistProgress]);
 
   const handlePurchase = useCallback((upgradeId: string) => {
     setProgress(prev => {
@@ -82,10 +132,35 @@ const Index: React.FC = () => {
         coins: prev.coins - cost,
         upgrades: { ...prev.upgrades, [upgradeId]: level + 1 },
       };
-      saveProgress(next);
+      persistProgress(next);
       return next;
     });
+  }, [persistProgress]);
+
+  const handleBuyWeapon = useCallback((weaponType: WeaponType) => {
+    setProgress(prev => {
+      if (prev.weaponsOwned.includes(weaponType)) return prev;
+      const shopItem = WEAPON_SHOP.find(w => w.type === weaponType);
+      if (!shopItem || prev.coins < shopItem.cost) return prev;
+
+      const next = {
+        ...prev,
+        coins: prev.coins - shopItem.cost,
+        weaponsOwned: [...prev.weaponsOwned, weaponType],
+      };
+      persistProgress(next);
+      return next;
+    });
+  }, [persistProgress]);
+
+  const handleTutorialDone = useCallback(() => {
+    setShowTutorial(false);
+    localStorage.setItem('phantom_depths_tutorial_done', 'true');
   }, []);
+
+  if (showTutorial) {
+    return <Tutorial onComplete={handleTutorialDone} />;
+  }
 
   switch (screen) {
     case 'home':
@@ -94,6 +169,7 @@ const Index: React.FC = () => {
           progress={progress}
           onLaunchDive={() => setScreen('game')}
           onOpenShop={() => setScreen('shop')}
+          onMultiplayer={() => setScreen('multiplayer')}
         />
       );
     case 'shop':
@@ -101,6 +177,17 @@ const Index: React.FC = () => {
         <Shop
           progress={progress}
           onPurchase={handlePurchase}
+          onBuyWeapon={handleBuyWeapon}
+          onBack={() => setScreen('home')}
+        />
+      );
+    case 'multiplayer':
+      return (
+        <MultiplayerLobby
+          onStartMultiplayer={(roomId) => {
+            setMultiplayerRoomId(roomId);
+            setScreen('game');
+          }}
           onBack={() => setScreen('home')}
         />
       );
@@ -109,7 +196,11 @@ const Index: React.FC = () => {
         <GameCanvas
           progress={progress}
           onGameEnd={handleGameEnd}
-          onReturnToBase={() => setScreen('home')}
+          onReturnToBase={() => {
+            setMultiplayerRoomId(null);
+            setScreen('home');
+          }}
+          multiplayerRoomId={multiplayerRoomId}
         />
       );
   }

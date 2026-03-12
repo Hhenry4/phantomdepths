@@ -20,16 +20,29 @@ interface HUDProps {
   gameOver: boolean;
   paused: boolean;
   killCount: Record<string, number>;
+  activeWeapon: string;
+  weaponCount: number;
+  xpEarned: number;
   onRestart: () => void;
   onReturnToBase: () => void;
 }
+
+const weaponLabels: Record<string, string> = {
+  harpoon: 'HARPOON',
+  shock: 'SHOCK',
+  torpedo: 'TORPEDO',
+  plasma: 'PLASMA',
+};
 
 const HUD: React.FC<HUDProps> = ({
   depth, hull, maxHull, power, maxPower, oxygen, maxOxygen,
   zone, engineNoise, lightOn, sonarReady, ammo, maxAmmo,
   deepest, score, coins, gameOver, paused, killCount,
+  activeWeapon, weaponCount, xpEarned,
   onRestart, onReturnToBase,
 }) => {
+  const totalKills = Object.values(killCount).reduce((a, b) => a + b, 0);
+
   return (
     <div className="absolute inset-0 pointer-events-none" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
       {/* Top bar */}
@@ -46,6 +59,12 @@ const HUD: React.FC<HUDProps> = ({
           </span>
           <span className="text-xs" style={{ color: '#ffd700' }}>
             ◆ {coins}
+          </span>
+          <span className="text-xs" style={{ color: '#e0b0ff' }}>
+            XP +{xpEarned}
+          </span>
+          <span className="text-xs" style={{ color: '#ff4500' }}>
+            KILLS: {totalKills}
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -80,7 +99,7 @@ const HUD: React.FC<HUDProps> = ({
 
       {/* Bottom telemetry strip */}
       <div
-        className="absolute bottom-0 left-0 right-0 flex items-end justify-center gap-8 px-8 py-3"
+        className="absolute bottom-0 left-0 right-0 flex items-end justify-center gap-6 px-8 py-3"
         style={{ background: 'rgba(16, 20, 24, 0.85)' }}
       >
         <TelemetryBar label="HULL" value={hull} max={maxHull} color={hull / maxHull > 0.6 ? '#b4c5cf' : hull / maxHull > 0.3 ? '#ff8c00' : '#ff4500'} critical={hull / maxHull <= 0.3} />
@@ -103,10 +122,15 @@ const HUD: React.FC<HUDProps> = ({
           </div>
         </div>
         <div className="flex flex-col items-center gap-1">
-          <span className="text-xs" style={{ color: '#6a7a84' }}>HARPOON</span>
+          <span className="text-xs" style={{ color: '#6a7a84' }}>
+            {weaponLabels[activeWeapon] || activeWeapon.toUpperCase()}
+          </span>
           <span className="text-sm font-bold" style={{ color: ammo > 5 ? '#b4c5cf' : '#ff4500' }}>
             {ammo}/{maxAmmo}
           </span>
+          {weaponCount > 1 && (
+            <span className="text-xs" style={{ color: '#4a5a64' }}>[Q] SWITCH</span>
+          )}
         </div>
       </div>
 
@@ -118,6 +142,7 @@ const HUD: React.FC<HUDProps> = ({
         <div className="flex flex-col gap-1 text-xs" style={{ color: '#4a5a64' }}>
           <span>WASD / ↑↓←→ MOVE</span>
           <span>SPACE — FIRE</span>
+          <span>Q — SWITCH WEAPON</span>
           <span>E — SONAR</span>
           <span>F — LIGHT</span>
           <span>ESC — PAUSE</span>
@@ -134,14 +159,20 @@ const HUD: React.FC<HUDProps> = ({
             SUBMARINE LOST AT {depth}m
           </p>
           <p className="text-sm mb-2" style={{ color: '#6a7a84' }}>
-            DEEPEST DESCENT: {deepest}m
+            DEEPEST: {deepest}m — KILLS: {totalKills}
           </p>
-          <p className="text-sm mb-1" style={{ color: '#ffd700' }}>
-            COINS EARNED: ◆ {coins}
-          </p>
-          <p className="text-xs mb-6" style={{ color: '#6a7a84' }}>
-            SCORE: {score}
-          </p>
+          <div className="flex gap-6 mb-2">
+            <span className="text-sm" style={{ color: '#ffd700' }}>◆ {coins}</span>
+            <span className="text-sm" style={{ color: '#e0b0ff' }}>XP +{xpEarned}</span>
+          </div>
+          {/* Kill breakdown */}
+          {Object.keys(killCount).length > 0 && (
+            <div className="mb-4 text-xs" style={{ color: '#6a7a84' }}>
+              {Object.entries(killCount).map(([type, count]) => (
+                <span key={type} className="mr-3">{type}: {count}</span>
+              ))}
+            </div>
+          )}
           <div className="flex gap-4">
             <button
               onClick={onRestart}
@@ -167,6 +198,7 @@ const HUD: React.FC<HUDProps> = ({
           <h1 className="text-2xl font-bold" style={{ color: '#b4c5cf', fontFamily: "'IBM Plex Mono', monospace" }}>
             SYSTEMS PAUSED
           </h1>
+          <p className="text-xs mt-1" style={{ color: '#00ff88' }}>PROGRESS AUTO-SAVED</p>
           <p className="text-sm mt-2 mb-6" style={{ color: '#6a7a84' }}>
             PRESS ESC TO RESUME
           </p>
