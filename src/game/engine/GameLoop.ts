@@ -1,29 +1,36 @@
-import { GameState, Projectile, Particle, SonarPing, PlayerProgress } from '../types';
+import { GameState, Projectile, Particle, PlayerProgress, WeaponType } from '../types';
 import {
   SUB_THRUST, SUB_DRAG, SUB_GRAVITY, SUB_MAX_SPEED,
   SONAR_COOLDOWN, SONAR_MAX_RADIUS, WORLD_WIDTH,
   HARPOON_SPEED, HARPOON_RANGE, HARPOON_COOLDOWN, HARPOON_HIT_RADIUS,
-  HARPOON_BASE_DAMAGE, BOSS_SPAWN_DEPTHS, COIN_VALUES,
+  HARPOON_BASE_DAMAGE, BOSS_SPAWN_DEPTHS, COIN_VALUES, XP_PER_KILL,
+  WEAPON_SHOP,
 } from '../constants';
 import { InputManager } from './Input';
 import { generateTerrain, getZoneAtDepth, getZoneConfig } from './Terrain';
 import { spawnCreaturesForDepth, spawnBoss, updateCreature } from './Creatures';
 
-export function applyUpgrades(progress: PlayerProgress): Partial<{
+export function applyUpgrades(progress: PlayerProgress): {
   maxHull: number; maxOxygen: number; maxPower: number;
   speed: number; harpoonDamage: number; maxAmmo: number;
-  armorLevel: number; sonarLevel: number;
-}> {
+  armorLevel: number; sonarLevel: number; fireRateBonus: number;
+  projSpeedBonus: number; stealthBonus: number; regenLevel: number; lightLevel: number;
+} {
   const u = progress.upgrades;
   return {
-    maxHull: 100 + (u.hull || 0) * 25,
-    maxOxygen: 100 + (u.oxygen || 0) * 25,
-    maxPower: 100 + (u.power || 0) * 25,
-    speed: 1 + (u.speed || 0) * 0.15,
-    harpoonDamage: HARPOON_BASE_DAMAGE * (1 + (u.damage || 0) * 0.4),
-    maxAmmo: 20 + (u.ammo || 0) * 10,
+    maxHull: 100 + (u.hull || 0) * 30,
+    maxOxygen: 100 + (u.oxygen || 0) * 30,
+    maxPower: 100 + (u.power || 0) * 30,
+    speed: 1 + (u.speed || 0) * 0.12,
+    harpoonDamage: HARPOON_BASE_DAMAGE * (1 + (u.damage || 0) * 0.35),
+    maxAmmo: 20 + (u.ammo || 0) * 8,
     armorLevel: u.armor || 0,
     sonarLevel: u.sonar || 0,
+    fireRateBonus: (u.firerate || 0) * 0.15,
+    projSpeedBonus: (u.projspeed || 0) * 0.2,
+    stealthBonus: (u.stealth || 0) * 0.2,
+    regenLevel: u.regen || 0,
+    lightLevel: u.light || 0,
   };
 }
 
@@ -32,8 +39,23 @@ export function createInitialState(progress?: PlayerProgress): GameState {
   const ups = progress ? applyUpgrades(progress) : {
     maxHull: 100, maxOxygen: 100, maxPower: 100,
     speed: 1, harpoonDamage: HARPOON_BASE_DAMAGE, maxAmmo: 20,
-    armorLevel: 0, sonarLevel: 0,
+    armorLevel: 0, sonarLevel: 0, fireRateBonus: 0, projSpeedBonus: 0,
+    stealthBonus: 0, regenLevel: 0, lightLevel: 0,
   };
+
+  // Build weapon slots from owned weapons
+  const weaponsOwned = progress?.weaponsOwned || ['harpoon'];
+  const weapons = weaponsOwned.map(wType => {
+    const shopItem = WEAPON_SHOP.find(w => w.type === wType);
+    if (!shopItem) return { type: wType as WeaponType, ammo: 20, maxAmmo: 20, cooldown: 0 };
+    const ammoBonus = wType === 'harpoon' ? (ups.maxAmmo - 20) : 0;
+    return {
+      type: wType as WeaponType,
+      ammo: shopItem.ammo + ammoBonus,
+      maxAmmo: shopItem.ammo + ammoBonus,
+      cooldown: 0,
+    };
+  });
 
   return {
     sub: {
@@ -41,20 +63,21 @@ export function createInitialState(progress?: PlayerProgress): GameState {
       vel: { x: 0, y: 0 },
       rotation: Math.PI / 2,
       thrust: 0,
-      hull: ups.maxHull!,
-      maxHull: ups.maxHull!,
-      power: ups.maxPower!,
-      maxPower: ups.maxPower!,
-      oxygen: ups.maxOxygen!,
-      maxOxygen: ups.maxOxygen!,
+      hull: ups.maxHull,
+      maxHull: ups.maxHull,
+      power: ups.maxPower,
+      maxPower: ups.maxPower,
+      oxygen: ups.maxOxygen,
+      maxOxygen: ups.maxOxygen,
       depth: 0,
       engineNoise: 0,
       lightOn: true,
-      weapons: [{ type: 'harpoon', ammo: ups.maxAmmo!, maxAmmo: ups.maxAmmo!, cooldown: 0 }],
+      weapons,
+      activeWeaponIndex: 0,
       sonarCooldown: 0,
       sonarActive: false,
-      speed: ups.speed!,
-      harpoonDamage: ups.harpoonDamage!,
+      speed: ups.speed,
+      harpoonDamage: ups.harpoonDamage,
     },
     creatures: [],
     terrain,
@@ -65,6 +88,7 @@ export function createInitialState(progress?: PlayerProgress): GameState {
     worldWidth: WORLD_WIDTH,
     score: 0,
     coins: 0,
+    xpEarned: 0,
     time: 0,
     paused: false,
     gameOver: false,
@@ -76,34 +100,29 @@ export function createInitialState(progress?: PlayerProgress): GameState {
   };
 }
 
-export function updateGame(state: GameState, input: InputManager, dt: number): void {
+let upgradeCache: ReturnType<typeof applyUpgrades> | null = null;
+
+export function updateGame(state: GameState, input: InputManager, dt: number, progress?: PlayerProgress): void {
   if (state.paused || state.gameOver) return;
+
+  if (progress && !upgradeCache) {
+    upgradeCache = applyUpgrades(progress);
+  }
 
   state.time += dt;
   const sub = state.sub;
+  const ups = upgradeCache;
 
-  // --- Direct WASD movement (no rotation) ---
+  // --- Direct WASD movement ---
   let thrusting = false;
   const thrustPower = SUB_THRUST * sub.speed;
 
-  if (input.isDown('w') || input.isDown('ArrowUp')) {
-    sub.vel.y -= thrustPower;
-    thrusting = true;
-  }
-  if (input.isDown('s') || input.isDown('ArrowDown')) {
-    sub.vel.y += thrustPower;
-    thrusting = true;
-  }
-  if (input.isDown('a') || input.isDown('ArrowLeft')) {
-    sub.vel.x -= thrustPower;
-    thrusting = true;
-  }
-  if (input.isDown('d') || input.isDown('ArrowRight')) {
-    sub.vel.x += thrustPower;
-    thrusting = true;
-  }
+  if (input.isDown('w') || input.isDown('ArrowUp')) { sub.vel.y -= thrustPower; thrusting = true; }
+  if (input.isDown('s') || input.isDown('ArrowDown')) { sub.vel.y += thrustPower; thrusting = true; }
+  if (input.isDown('a') || input.isDown('ArrowLeft')) { sub.vel.x -= thrustPower; thrusting = true; }
+  if (input.isDown('d') || input.isDown('ArrowRight')) { sub.vel.x += thrustPower; thrusting = true; }
 
-  // Update rotation to face velocity direction
+  // Rotation to face velocity
   const speed = Math.sqrt(sub.vel.x ** 2 + sub.vel.y ** 2);
   if (speed > 0.3) {
     const targetRot = Math.atan2(sub.vel.y, sub.vel.x);
@@ -116,51 +135,109 @@ export function updateGame(state: GameState, input: InputManager, dt: number): v
   // Toggle light
   if (input.wasPressed('f')) sub.lightOn = !sub.lightOn;
 
+  // Weapon switching (Q key or scroll via 1/2/3/4)
+  if (input.wasPressed('q')) {
+    sub.activeWeaponIndex = (sub.activeWeaponIndex + 1) % sub.weapons.length;
+  }
+  for (let i = 0; i < sub.weapons.length && i < 4; i++) {
+    if (input.wasPressed(String(i + 1))) sub.activeWeaponIndex = i;
+  }
+
   // Sonar ping
   if (input.wasPressed('e') && sub.sonarCooldown <= 0) {
-    const sonarLevel = 0; // Will be passed via upgrades later
+    const sonarLevel = ups?.sonarLevel ?? 0;
     state.sonarPings.push({
       origin: { ...sub.pos },
       radius: 0,
-      maxRadius: SONAR_MAX_RADIUS * (1 + sonarLevel * 0.3),
+      maxRadius: SONAR_MAX_RADIUS * (1 + sonarLevel * 0.25),
       alpha: 1,
       echoReturned: false,
       echoRadius: 0,
     });
-    sub.sonarCooldown = SONAR_COOLDOWN * (1 - sonarLevel * 0.2);
+    sub.sonarCooldown = SONAR_COOLDOWN * (1 - (ups?.sonarLevel ?? 0) * 0.15);
     sub.engineNoise = Math.min(sub.engineNoise + 0.3, 1);
   }
 
-  // Weapon fire - fires in facing direction
-  if ((input.isDown(' ') || input.wasPressed(' ')) && sub.weapons[0]) {
-    const weapon = sub.weapons[0];
-    if (weapon.ammo > 0 && weapon.cooldown <= 0) {
-      weapon.ammo--;
-      weapon.cooldown = HARPOON_COOLDOWN;
-      const projX = sub.pos.x + Math.cos(sub.rotation) * 35;
-      const projY = sub.pos.y + Math.sin(sub.rotation) * 35;
-      state.projectiles.push({
-        pos: { x: projX, y: projY },
-        vel: {
-          x: Math.cos(sub.rotation) * HARPOON_SPEED,
-          y: Math.sin(sub.rotation) * HARPOON_SPEED,
-        },
-        life: HARPOON_RANGE / HARPOON_SPEED,
-        damage: sub.harpoonDamage,
-        type: 'harpoon',
-      });
-      // Muzzle flash
-      for (let i = 0; i < 3; i++) {
-        state.particles.push({
+  // Weapon fire
+  const activeWeapon = sub.weapons[sub.activeWeaponIndex];
+  if (activeWeapon && (input.isDown(' ') || input.wasPressed(' ')) && activeWeapon.ammo > 0 && activeWeapon.cooldown <= 0) {
+    activeWeapon.ammo--;
+    const fireRateMultiplier = 1 - (ups?.fireRateBonus ?? 0);
+    const projSpeedMultiplier = 1 + (ups?.projSpeedBonus ?? 0);
+
+    const projX = sub.pos.x + Math.cos(sub.rotation) * 35;
+    const projY = sub.pos.y + Math.sin(sub.rotation) * 35;
+
+    switch (activeWeapon.type) {
+      case 'harpoon': {
+        activeWeapon.cooldown = Math.floor(HARPOON_COOLDOWN * fireRateMultiplier);
+        state.projectiles.push({
           pos: { x: projX, y: projY },
-          vel: {
-            x: Math.cos(sub.rotation) * (HARPOON_SPEED * 0.5 + Math.random() * 2),
-            y: Math.sin(sub.rotation) * (HARPOON_SPEED * 0.5 + Math.random() * 2),
-          },
-          life: 12, maxLife: 12, size: 2,
-          color: '#ffaa00', alpha: 1, type: 'debris',
+          vel: { x: Math.cos(sub.rotation) * HARPOON_SPEED * projSpeedMultiplier, y: Math.sin(sub.rotation) * HARPOON_SPEED * projSpeedMultiplier },
+          life: HARPOON_RANGE / HARPOON_SPEED,
+          damage: sub.harpoonDamage,
+          type: 'harpoon',
         });
+        break;
       }
+      case 'shock': {
+        activeWeapon.cooldown = Math.floor(45 * fireRateMultiplier);
+        // Shock is AoE - stun all creatures in radius
+        const shockRadius = 150;
+        for (const c of state.creatures) {
+          const cdx = c.pos.x - sub.pos.x;
+          const cdy = c.pos.y - sub.pos.y;
+          const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
+          if (cdist < shockRadius) {
+            c.stunTimer = 60;
+            c.health -= 8;
+            c.vel.x += (cdx / (cdist || 1)) * 5;
+            c.vel.y += (cdy / (cdist || 1)) * 5;
+          }
+        }
+        // Electric particles
+        for (let i = 0; i < 20; i++) {
+          const angle = (Math.PI * 2 * i) / 20;
+          state.particles.push({
+            pos: { x: sub.pos.x, y: sub.pos.y },
+            vel: { x: Math.cos(angle) * (3 + Math.random() * 3), y: Math.sin(angle) * (3 + Math.random() * 3) },
+            life: 20, maxLife: 20, size: 2, color: '#6bb5ff', alpha: 1, type: 'electric',
+          });
+        }
+        break;
+      }
+      case 'torpedo': {
+        activeWeapon.cooldown = Math.floor(60 * fireRateMultiplier);
+        state.projectiles.push({
+          pos: { x: projX, y: projY },
+          vel: { x: Math.cos(sub.rotation) * 8 * projSpeedMultiplier, y: Math.sin(sub.rotation) * 8 * projSpeedMultiplier },
+          life: 80,
+          damage: 80,
+          type: 'torpedo',
+          radius: 100,
+        });
+        break;
+      }
+      case 'plasma': {
+        activeWeapon.cooldown = Math.floor(5 * fireRateMultiplier);
+        state.projectiles.push({
+          pos: { x: projX, y: projY },
+          vel: { x: Math.cos(sub.rotation) * 18 * projSpeedMultiplier, y: Math.sin(sub.rotation) * 18 * projSpeedMultiplier },
+          life: 15,
+          damage: 12,
+          type: 'plasma',
+        });
+        break;
+      }
+    }
+
+    // Muzzle flash
+    for (let i = 0; i < 3; i++) {
+      state.particles.push({
+        pos: { x: projX, y: projY },
+        vel: { x: Math.cos(sub.rotation) * (4 + Math.random() * 2), y: Math.sin(sub.rotation) * (4 + Math.random() * 2) },
+        life: 12, maxLife: 12, size: 2, color: '#ffaa00', alpha: 1, type: 'debris',
+      });
     }
   }
 
@@ -178,7 +255,6 @@ export function updateGame(state: GameState, input: InputManager, dt: number): v
 
   sub.pos.x += sub.vel.x;
   sub.pos.y += sub.vel.y;
-
   if (sub.pos.y < 0) { sub.pos.y = 0; sub.vel.y = 0; }
 
   // Terrain collision
@@ -189,12 +265,12 @@ export function updateGame(state: GameState, input: InputManager, dt: number): v
     if (sub.pos.x < leftWall + 35) {
       sub.pos.x = leftWall + 35;
       sub.vel.x = Math.abs(sub.vel.x) * 0.3;
-      sub.hull -= 0.5;
+      sub.hull -= 1;
     }
     if (sub.pos.x > rightWall - 35) {
       sub.pos.x = rightWall - 35;
       sub.vel.x = -Math.abs(sub.vel.x) * 0.3;
-      sub.hull -= 0.5;
+      sub.hull -= 1;
     }
   }
 
@@ -203,19 +279,31 @@ export function updateGame(state: GameState, input: InputManager, dt: number): v
   state.currentZone = getZoneAtDepth(sub.depth);
   state.deepestDepth = Math.max(state.deepestDepth, sub.depth);
 
-  // Engine noise
-  sub.engineNoise = thrusting ? Math.min(sub.engineNoise + 0.02, 1) : Math.max(sub.engineNoise - 0.01, 0);
+  // Engine noise (stealth upgrade reduces it)
+  const stealthMult = 1 - (ups?.stealthBonus ?? 0);
+  sub.engineNoise = thrusting
+    ? Math.min(sub.engineNoise + 0.02 * stealthMult, 1)
+    : Math.max(sub.engineNoise - 0.01, 0);
   sub.thrust = thrusting ? 1 : 0;
 
-  // Resource drain (much slower)
-  sub.power = Math.max(0, sub.power - (sub.lightOn ? 0.003 : 0.001));
-  sub.oxygen = Math.max(0, sub.oxygen - 0.002);
+  // Resource drain - FASTER
+  sub.power = Math.max(0, sub.power - (sub.lightOn ? 0.008 : 0.003));
+  sub.oxygen = Math.max(0, sub.oxygen - 0.006);
 
-  // Pressure damage (reduced by armor upgrade)
+  // Hull regen from nano-repair
+  if (ups && ups.regenLevel > 0 && sub.hull < sub.maxHull) {
+    sub.hull = Math.min(sub.maxHull, sub.hull + 0.003 * ups.regenLevel);
+  }
+
+  // Pressure damage (reduced by armor)
   const zoneConfig = getZoneConfig(sub.depth);
   if (zoneConfig.pressureDamage > 0) {
-    sub.hull = Math.max(0, sub.hull - zoneConfig.pressureDamage);
+    const armorReduction = 1 - (ups?.armorLevel ?? 0) * 0.25;
+    sub.hull = Math.max(0, sub.hull - zoneConfig.pressureDamage * Math.max(0.1, armorReduction));
   }
+
+  // No power = no light
+  if (sub.power <= 0) sub.lightOn = false;
 
   // Game over
   if (sub.hull <= 0 || sub.oxygen <= 0) {
@@ -238,16 +326,49 @@ export function updateGame(state: GameState, input: InputManager, dt: number): v
     proj.pos.y += proj.vel.y;
     proj.life--;
 
-    // Check creature hits
     for (const creature of state.creatures) {
       const dx = creature.pos.x - proj.pos.x;
       const dy = creature.pos.y - proj.pos.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < creature.size + HARPOON_HIT_RADIUS) {
+      const hitRadius = proj.type === 'torpedo' ? 30 : HARPOON_HIT_RADIUS;
+
+      if (dist < creature.size + hitRadius) {
         creature.health -= proj.damage;
         creature.vel.x += proj.vel.x * 0.3;
         creature.vel.y += proj.vel.y * 0.3;
-        creature.stunTimer = 20;
+
+        if (proj.type === 'shock') {
+          creature.stunTimer = 40;
+        } else {
+          creature.stunTimer = 15;
+        }
+
+        // Torpedo explosion - AoE
+        if (proj.type === 'torpedo') {
+          const explosionRadius = proj.radius || 100;
+          for (const other of state.creatures) {
+            if (other === creature) continue;
+            const odx = other.pos.x - proj.pos.x;
+            const ody = other.pos.y - proj.pos.y;
+            const odist = Math.sqrt(odx * odx + ody * ody);
+            if (odist < explosionRadius) {
+              other.health -= proj.damage * 0.5;
+              other.vel.x += (odx / (odist || 1)) * 8;
+              other.vel.y += (ody / (odist || 1)) * 8;
+              other.stunTimer = 20;
+            }
+          }
+          // Explosion particles
+          for (let i = 0; i < 15; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            state.particles.push({
+              pos: { x: proj.pos.x, y: proj.pos.y },
+              vel: { x: Math.cos(angle) * (3 + Math.random() * 5), y: Math.sin(angle) * (3 + Math.random() * 5) },
+              life: 30, maxLife: 30, size: 3 + Math.random() * 4,
+              color: '#ff6600', alpha: 1, type: 'explosion',
+            });
+          }
+        }
 
         // Hit particles
         for (let i = 0; i < 5; i++) {
@@ -255,30 +376,30 @@ export function updateGame(state: GameState, input: InputManager, dt: number): v
             pos: { x: proj.pos.x, y: proj.pos.y },
             vel: { x: (Math.random() - 0.5) * 4, y: (Math.random() - 0.5) * 4 },
             life: 20, maxLife: 20, size: 3,
-            color: '#ff4500', alpha: 1, type: 'debris',
+            color: proj.type === 'plasma' ? '#e0b0ff' : '#ff4500', alpha: 1, type: 'debris',
           });
         }
 
         // Check kill
         if (creature.health <= 0) {
           const coinValue = COIN_VALUES[creature.type] || 5;
-          const bonus = creature.isBoss ? coinValue * 3 : 0;
+          const bonus = creature.isBoss ? coinValue * 4 : 0;
           state.coins += coinValue + bonus;
           state.score += coinValue * 10;
+          state.xpEarned += XP_PER_KILL[creature.type] || 10;
           state.killCount[creature.type] = (state.killCount[creature.type] || 0) + 1;
           if (creature.isBoss) {
             state.bossesDefeated.push(`${creature.zone}_boss`);
           }
           // Death particles
-          for (let i = 0; i < 10; i++) {
+          for (let i = 0; i < 12; i++) {
             state.particles.push({
               pos: { x: creature.pos.x, y: creature.pos.y },
-              vel: { x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 5 },
-              life: 40, maxLife: 40, size: 2 + Math.random() * 3,
+              vel: { x: (Math.random() - 0.5) * 6, y: (Math.random() - 0.5) * 6 },
+              life: 50, maxLife: 50, size: 2 + Math.random() * 4,
               color: creature.glowColor, alpha: 0.8, type: 'debris',
             });
           }
-          // Coin particle
           state.particles.push({
             pos: { x: creature.pos.x, y: creature.pos.y },
             vel: { x: 0, y: -1 },
@@ -287,7 +408,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number): v
           });
         }
 
-        return false; // destroy projectile
+        return false;
       }
     }
     return proj.life > 0;
@@ -300,24 +421,24 @@ export function updateGame(state: GameState, input: InputManager, dt: number): v
   for (const creature of state.creatures) {
     updateCreature(creature, sub.pos, dt, sub.engineNoise);
 
-    // Collision with submarine - ACTUALLY DAMAGING
+    // Collision with submarine - LETHAL
     const dx = creature.pos.x - sub.pos.x;
     const dy = creature.pos.y - sub.pos.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < creature.size + 30 && creature.damage > 0 && creature.attackCooldown <= 0) {
-      if (creature.state === 'chase' || creature.type === 'jellyfish') {
-        sub.hull -= creature.damage;
-        creature.attackCooldown = 30; // ~0.5s between attacks
-        // Knockback
+      const shouldAttack = creature.state === 'chase' || creature.state === 'charge' || creature.type === 'jellyfish';
+      if (shouldAttack) {
+        const dmgMult = creature.state === 'charge' ? 1.5 : 1;
+        sub.hull -= creature.damage * dmgMult;
+        creature.attackCooldown = 25;
         const nx = dx / (dist || 1);
         const ny = dy / (dist || 1);
-        sub.vel.x -= nx * 3;
-        sub.vel.y -= ny * 3;
-        // Damage flash particles
-        for (let i = 0; i < 4; i++) {
+        sub.vel.x -= nx * 4;
+        sub.vel.y -= ny * 4;
+        for (let i = 0; i < 5; i++) {
           state.particles.push({
             pos: { x: sub.pos.x + (Math.random() - 0.5) * 30, y: sub.pos.y + (Math.random() - 0.5) * 20 },
-            vel: { x: (Math.random() - 0.5) * 3, y: (Math.random() - 0.5) * 3 },
+            vel: { x: (Math.random() - 0.5) * 4, y: (Math.random() - 0.5) * 4 },
             life: 15, maxLife: 15, size: 4,
             color: '#ff0000', alpha: 1, type: 'debris',
           });
@@ -326,10 +447,10 @@ export function updateGame(state: GameState, input: InputManager, dt: number): v
     }
   }
 
-  // Remove dead/distant creatures
+  // Remove dead/distant
   state.creatures = state.creatures.filter(c => {
     const dist = Math.sqrt((c.pos.x - sub.pos.x) ** 2 + (c.pos.y - sub.pos.y) ** 2);
-    return c.health > 0 && dist < 2000;
+    return c.health > 0 && dist < 2500;
   });
 
   // Sonar pings
@@ -380,29 +501,28 @@ let bossSpawned: Set<number> = new Set();
 
 export function resetBossTracker() {
   bossSpawned = new Set();
+  upgradeCache = null;
 }
 
 function updateCreatureSpawning(state: GameState) {
-  // Regular spawning
-  if (state.time % 120 === 0) {
+  if (state.time % 90 === 0) {
     const newCreatures = spawnCreaturesForDepth(state.sub.depth, state.worldWidth);
     for (const c of newCreatures) {
       c.pos.x += state.sub.pos.x;
-      c.pos.y = state.sub.pos.y + (Math.random() - 0.5) * 600;
+      c.pos.y = state.sub.pos.y + (Math.random() - 0.5) * 800;
       c.patrolCenter = { ...c.pos };
     }
     state.creatures.push(...newCreatures);
-    if (state.creatures.length > 40) {
-      state.creatures = state.creatures.slice(-40);
+    if (state.creatures.length > 50) {
+      state.creatures = state.creatures.slice(-50);
     }
   }
 
-  // Boss spawning at zone boundaries
   for (const bossDepth of BOSS_SPAWN_DEPTHS) {
     if (!bossSpawned.has(bossDepth) && Math.abs(state.sub.depth - bossDepth) < 50) {
       const boss = spawnBoss(bossDepth, state.worldWidth);
       if (boss) {
-        boss.pos.x = state.sub.pos.x + (Math.random() > 0.5 ? 300 : -300);
+        boss.pos.x = state.sub.pos.x + (Math.random() > 0.5 ? 400 : -400);
         boss.pos.y = bossDepth;
         boss.patrolCenter = { ...boss.pos };
         state.creatures.push(boss);
@@ -425,6 +545,15 @@ function updateParticles(state: GameState) {
       p.vel.y -= 0.02;
       p.alpha = p.life / p.maxLife;
     }
+    if (p.type === 'electric') {
+      p.vel.x *= 0.9;
+      p.vel.y *= 0.9;
+    }
+    if (p.type === 'explosion') {
+      p.vel.x *= 0.95;
+      p.vel.y *= 0.95;
+      p.size *= 0.97;
+    }
     return p.life > 0;
   });
 }
@@ -432,8 +561,8 @@ function updateParticles(state: GameState) {
 function spawnBubble(state: GameState) {
   state.particles.push({
     pos: {
-      x: state.sub.pos.x + (Math.random() - 0.5) * 400,
-      y: state.sub.pos.y + (Math.random() - 0.5) * 400,
+      x: state.sub.pos.x + (Math.random() - 0.5) * 500,
+      y: state.sub.pos.y + (Math.random() - 0.5) * 500,
     },
     vel: { x: (Math.random() - 0.5) * 0.3, y: -0.3 - Math.random() * 0.5 },
     life: 120, maxLife: 120, size: 1 + Math.random() * 2,
@@ -444,13 +573,11 @@ function spawnBubble(state: GameState) {
 function spawnBiolum(state: GameState) {
   state.particles.push({
     pos: {
-      x: state.sub.pos.x + (Math.random() - 0.5) * 500,
-      y: state.sub.pos.y + (Math.random() - 0.5) * 500,
+      x: state.sub.pos.x + (Math.random() - 0.5) * 600,
+      y: state.sub.pos.y + (Math.random() - 0.5) * 600,
     },
     vel: { x: (Math.random() - 0.5) * 0.2, y: (Math.random() - 0.5) * 0.2 },
     life: 200, maxLife: 200, size: 1 + Math.random() * 3,
     color: '#e0b0ff', alpha: 0.5 + Math.random() * 0.3, type: 'biolum',
   });
 }
-
-

@@ -1,12 +1,12 @@
 import { Creature, Vec2, CreatureType, DepthZone } from '../types';
-import { CREATURE_CONFIGS, DEPTH_ZONES, BOSS_SPAWN_DEPTHS } from '../constants';
+import { CREATURE_CONFIGS, DEPTH_ZONES } from '../constants';
 import { getZoneAtDepth } from './Terrain';
 
 let creatureIdCounter = 0;
 
 export function spawnCreature(type: CreatureType, pos: Vec2, zone: DepthZone, isBoss = false): Creature {
   const config = CREATURE_CONFIGS[type];
-  const bossMultiplier = isBoss ? 3 : 1;
+  const bossMultiplier = isBoss ? 3.5 : 1;
   return {
     id: `creature_${creatureIdCounter++}`,
     pos: { ...pos },
@@ -17,10 +17,10 @@ export function spawnCreature(type: CreatureType, pos: Vec2, zone: DepthZone, is
     state: 'patrol',
     stunTimer: 0,
     detectionRadius: config.detectionRadius * (isBoss ? 1.5 : 1),
-    speed: config.speed * (isBoss ? 0.8 : 1),
-    size: config.size * (isBoss ? 2 : 1),
+    speed: config.speed * (isBoss ? 0.9 : 1),
+    size: config.size * (isBoss ? 2.2 : 1),
     patrolCenter: { ...pos },
-    patrolRadius: isBoss ? 150 : 80 + Math.random() * 120,
+    patrolRadius: isBoss ? 200 : 80 + Math.random() * 150,
     patrolAngle: Math.random() * Math.PI * 2,
     zone,
     color: config.color,
@@ -28,6 +28,8 @@ export function spawnCreature(type: CreatureType, pos: Vec2, zone: DepthZone, is
     damage: config.damage * bossMultiplier,
     isBoss,
     attackCooldown: 0,
+    chargeTimer: 0,
+    chargeTarget: null,
   };
 }
 
@@ -50,12 +52,12 @@ export function spawnCreaturesForDepth(depth: number, worldWidth: number): Creat
   if (!zoneConfig) return [];
 
   const creatures: Creature[] = [];
-  const count = Math.floor(zoneConfig.creatureDensity * 3) + (Math.random() < zoneConfig.creatureDensity ? 1 : 0);
+  const count = Math.floor(zoneConfig.creatureDensity * 4) + (Math.random() < zoneConfig.creatureDensity ? 1 : 0);
 
   for (let i = 0; i < count; i++) {
     const type = zoneConfig.creatureTypes[Math.floor(Math.random() * zoneConfig.creatureTypes.length)];
-    const x = (Math.random() - 0.5) * worldWidth * 0.7;
-    const y = depth + Math.random() * 200;
+    const x = (Math.random() - 0.5) * worldWidth * 0.8;
+    const y = depth + Math.random() * 300;
     creatures.push(spawnCreature(type, { x, y }, zone));
   }
 
@@ -68,8 +70,8 @@ export function updateCreature(creature: Creature, subPos: Vec2, dt: number, eng
   if (creature.stunTimer > 0) {
     creature.stunTimer -= dt;
     creature.state = 'stunned';
-    creature.vel.x *= 0.95;
-    creature.vel.y *= 0.95;
+    creature.vel.x *= 0.93;
+    creature.vel.y *= 0.93;
     creature.pos.x += creature.vel.x;
     creature.pos.y += creature.vel.y;
     return;
@@ -78,25 +80,77 @@ export function updateCreature(creature: Creature, subPos: Vec2, dt: number, eng
   const dx = subPos.x - creature.pos.x;
   const dy = subPos.y - creature.pos.y;
   const dist = Math.sqrt(dx * dx + dy * dy);
-  const effectiveDetection = creature.detectionRadius * (1 + engineNoise);
+  const effectiveDetection = creature.detectionRadius * (1 + engineNoise * 0.8);
 
-  // State transitions
+  // State transitions with more advanced AI
   if (creature.type === 'fish') {
     creature.state = dist < effectiveDetection * 0.5 ? 'flee' : 'patrol';
   } else if (creature.type === 'jellyfish') {
-    creature.state = 'patrol'; // jellyfish just drift but hurt on contact
+    creature.state = 'patrol';
+  } else if (creature.type === 'eel') {
+    // Eels ambush then charge
+    if (dist < effectiveDetection * 0.3 && creature.chargeTimer <= 0) {
+      creature.state = 'charge';
+      creature.chargeTimer = 120;
+      creature.chargeTarget = { ...subPos };
+    } else if (dist < effectiveDetection) {
+      creature.state = creature.chargeTimer > 60 ? 'ambush' : 'chase';
+    } else {
+      creature.state = 'patrol';
+    }
+  } else if (creature.type === 'phantom') {
+    // Phantoms teleport-ambush: they stay in ambush until very close, then charge
+    if (dist < effectiveDetection * 0.4) {
+      creature.state = 'charge';
+      if (!creature.chargeTarget) creature.chargeTarget = { ...subPos };
+    } else if (dist < effectiveDetection) {
+      creature.state = 'ambush';
+    } else {
+      creature.state = 'patrol';
+    }
   } else {
-    creature.state = dist < effectiveDetection ? 'chase' : 'patrol';
+    if (dist < effectiveDetection) {
+      // Larger creatures charge when close
+      if (dist < effectiveDetection * 0.3 && creature.chargeTimer <= 0 && (creature.type === 'serpent' || creature.type === 'leviathan')) {
+        creature.state = 'charge';
+        creature.chargeTimer = 90;
+        creature.chargeTarget = { ...subPos };
+      } else {
+        creature.state = 'chase';
+      }
+    } else {
+      creature.state = 'patrol';
+    }
   }
 
   // Boss creatures are more aggressive
-  if (creature.isBoss && dist < effectiveDetection * 1.5) {
-    creature.state = 'chase';
+  if (creature.isBoss && dist < effectiveDetection * 1.8) {
+    if (dist < effectiveDetection * 0.4 && creature.chargeTimer <= 0) {
+      creature.state = 'charge';
+      creature.chargeTimer = 60;
+      creature.chargeTarget = { ...subPos };
+    } else if (creature.state !== 'charge') {
+      creature.state = 'chase';
+    }
   }
 
-  const chaseSpeed = creature.isBoss ? 0.08 : 0.05;
+  if (creature.chargeTimer > 0) creature.chargeTimer -= dt;
+
+  const chaseSpeed = creature.isBoss ? 0.1 : 0.06;
 
   switch (creature.state) {
+    case 'charge': {
+      // Fast lunge towards target
+      const target = creature.chargeTarget || subPos;
+      const cdx = target.x - creature.pos.x;
+      const cdy = target.y - creature.pos.y;
+      const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
+      const chargeForce = creature.isBoss ? 0.2 : 0.15;
+      creature.vel.x += (cdx / (cdist || 1)) * creature.speed * chargeForce;
+      creature.vel.y += (cdy / (cdist || 1)) * creature.speed * chargeForce;
+      if (cdist < 30) creature.chargeTarget = null;
+      break;
+    }
     case 'chase': {
       const nx = dx / (dist || 1);
       const ny = dy / (dist || 1);
@@ -109,6 +163,12 @@ export function updateCreature(creature: Creature, subPos: Vec2, dt: number, eng
       const ny = dy / (dist || 1);
       creature.vel.x -= nx * creature.speed * 0.08;
       creature.vel.y -= ny * creature.speed * 0.08;
+      break;
+    }
+    case 'ambush': {
+      // Stay still, wait
+      creature.vel.x *= 0.9;
+      creature.vel.y *= 0.9;
       break;
     }
     case 'patrol': {
@@ -124,10 +184,11 @@ export function updateCreature(creature: Creature, subPos: Vec2, dt: number, eng
     }
   }
 
+  const chargeMaxSpeed = creature.state === 'charge' ? creature.speed * 2 : creature.speed;
   const speed = Math.sqrt(creature.vel.x ** 2 + creature.vel.y ** 2);
-  if (speed > creature.speed) {
-    creature.vel.x = (creature.vel.x / speed) * creature.speed;
-    creature.vel.y = (creature.vel.y / speed) * creature.speed;
+  if (speed > chargeMaxSpeed) {
+    creature.vel.x = (creature.vel.x / speed) * chargeMaxSpeed;
+    creature.vel.y = (creature.vel.y / speed) * chargeMaxSpeed;
   }
 
   creature.vel.x *= 0.98;

@@ -18,6 +18,7 @@ export interface SubmarineState {
   engineNoise: number;
   lightOn: boolean;
   weapons: WeaponSlot[];
+  activeWeaponIndex: number;
   sonarCooldown: number;
   sonarActive: boolean;
   speed: number;
@@ -40,7 +41,7 @@ export interface Creature {
   type: CreatureType;
   health: number;
   maxHealth: number;
-  state: 'patrol' | 'chase' | 'ambush' | 'flee' | 'stunned';
+  state: 'patrol' | 'chase' | 'ambush' | 'flee' | 'stunned' | 'charge';
   stunTimer: number;
   detectionRadius: number;
   speed: number;
@@ -54,9 +55,11 @@ export interface Creature {
   damage: number;
   isBoss: boolean;
   attackCooldown: number;
+  chargeTimer: number;
+  chargeTarget: Vec2 | null;
 }
 
-export type CreatureType = 'angler' | 'squid' | 'serpent' | 'jellyfish' | 'fish' | 'leviathan';
+export type CreatureType = 'angler' | 'squid' | 'serpent' | 'jellyfish' | 'fish' | 'leviathan' | 'eel' | 'phantom';
 export type DepthZone = 'sunlight' | 'twilight' | 'midnight' | 'abyssal' | 'hadal';
 
 export interface TerrainSegment {
@@ -79,7 +82,7 @@ export interface Particle {
   size: number;
   color: string;
   alpha: number;
-  type: 'bubble' | 'biolum' | 'debris' | 'sonar' | 'coin';
+  type: 'bubble' | 'biolum' | 'debris' | 'sonar' | 'coin' | 'electric' | 'explosion';
 }
 
 export interface SonarPing {
@@ -101,6 +104,7 @@ export interface GameState {
   worldWidth: number;
   score: number;
   coins: number;
+  xpEarned: number;
   time: number;
   paused: boolean;
   gameOver: boolean;
@@ -118,6 +122,7 @@ export interface Projectile {
   life: number;
   damage: number;
   type: WeaponType;
+  radius?: number;
 }
 
 export interface ZoneConfig {
@@ -141,6 +146,9 @@ export interface PlayerProgress {
   totalKills: number;
   questsCompleted: string[];
   unlockedZones: DepthZone[];
+  xp: number;
+  level: number;
+  weaponsOwned: WeaponType[];
 }
 
 export interface Upgrade {
@@ -150,17 +158,58 @@ export interface Upgrade {
   maxLevel: number;
   baseCost: number;
   costMultiplier: number;
+  category: 'submarine' | 'weapons' | 'systems';
+}
+
+export interface WeaponShopItem {
+  type: WeaponType;
+  name: string;
+  description: string;
+  cost: number;
+  damage: number;
+  ammo: number;
+  fireRate: number;
 }
 
 export interface Quest {
   id: string;
   name: string;
   description: string;
-  type: 'depth' | 'kill' | 'collect' | 'survive' | 'boss';
+  type: 'depth' | 'kill' | 'collect' | 'survive' | 'boss' | 'level';
   target: number;
   reward: number;
+  xpReward: number;
   zone?: DepthZone;
   creatureType?: CreatureType;
 }
 
-export type GameScreen = 'home' | 'shop' | 'game';
+export type GameScreen = 'home' | 'shop' | 'game' | 'multiplayer';
+
+// XP/Level helpers
+export function getXpForLevel(level: number): number {
+  return Math.floor(100 * Math.pow(1.5, level - 1));
+}
+
+export function getLevelFromXp(totalXp: number): number {
+  let level = 1;
+  let xpNeeded = 100;
+  let remaining = totalXp;
+  while (remaining >= xpNeeded) {
+    remaining -= xpNeeded;
+    level++;
+    xpNeeded = Math.floor(100 * Math.pow(1.5, level - 1));
+  }
+  return level;
+}
+
+export function getXpProgress(totalXp: number): { level: number; current: number; needed: number } {
+  let level = 1;
+  let xpNeeded = 100;
+  let remaining = totalXp;
+  while (remaining >= xpNeeded) {
+    remaining -= xpNeeded;
+    level++;
+    xpNeeded = Math.floor(100 * Math.pow(1.5, level - 1));
+  }
+  return { level, current: remaining, needed: xpNeeded };
+}
