@@ -1,8 +1,16 @@
 import { GameState, Creature, SonarPing, Vec2, Particle, Projectile, TerrainFeature } from '../types';
 import { SUB_WIDTH, SUB_HEIGHT, LIGHT_RADIUS_BASE, DEPTH_ZONES } from '../constants';
 import { getZoneConfig } from './Terrain';
+import { PlayerData } from '../../firebase/multiplayer';
 
-export function render(ctx: CanvasRenderingContext2D, state: GameState, canvasW: number, canvasH: number) {
+export function render(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  canvasW: number,
+  canvasH: number,
+  otherPlayers?: Record<string, PlayerData>,
+  lightLevel?: number,
+) {
   const { sub, camera } = state;
   const zoneConfig = getZoneConfig(sub.depth);
 
@@ -18,12 +26,48 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, canvasW:
   state.creatures.forEach(c => drawCreature(ctx, c, sub.depth));
   drawProjectiles(ctx, state.projectiles);
   state.sonarPings.forEach(p => drawSonarPing(ctx, p));
+
+  // Other players
+  if (otherPlayers) {
+    for (const [id, player] of Object.entries(otherPlayers)) {
+      if (player.alive) {
+        drawOtherPlayer(ctx, player);
+      }
+    }
+  }
+
   drawSubmarine(ctx, sub.pos, sub.rotation, sub.lightOn, sub.hull, sub.maxHull);
 
   ctx.restore();
 
-  drawDarknessOverlay(ctx, canvasW, canvasH, zoneConfig.ambientLight, zoneConfig.visibility, sub.lightOn);
-  drawMinimap(ctx, state, canvasW, canvasH);
+  const effectiveLightLevel = lightLevel ?? 0;
+  const lightRadiusMult = 1 + effectiveLightLevel * 0.3;
+  drawDarknessOverlay(ctx, canvasW, canvasH, zoneConfig.ambientLight, zoneConfig.visibility * lightRadiusMult, sub.lightOn);
+  drawMinimap(ctx, state, canvasW, canvasH, otherPlayers);
+}
+
+function drawOtherPlayer(ctx: CanvasRenderingContext2D, player: PlayerData) {
+  const { x, y, rotation } = player.odometry;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rotation);
+
+  ctx.fillStyle = '#1a3a4a';
+  ctx.strokeStyle = '#00ff88';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, SUB_WIDTH / 2, SUB_HEIGHT / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.restore();
+
+  // Name tag
+  ctx.fillStyle = '#00ff88';
+  ctx.font = '10px "IBM Plex Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(player.name, x, y - 25);
+  ctx.textAlign = 'start';
 }
 
 function drawTerrain(ctx: CanvasRenderingContext2D, state: GameState, camera: Vec2, cw: number, ch: number) {
@@ -33,24 +77,23 @@ function drawTerrain(ctx: CanvasRenderingContext2D, state: GameState, camera: Ve
 
   ctx.fillStyle = '#0a0e12';
   ctx.beginPath();
-  ctx.moveTo(-2000, viewTop);
+  ctx.moveTo(-3000, viewTop);
   for (const p of left) {
     if (p.y >= viewTop - 200 && p.y <= viewBottom + 200) ctx.lineTo(p.x, p.y);
   }
-  ctx.lineTo(-2000, viewBottom);
+  ctx.lineTo(-3000, viewBottom);
   ctx.closePath();
   ctx.fill();
 
   ctx.beginPath();
-  ctx.moveTo(2000, viewTop);
+  ctx.moveTo(3000, viewTop);
   for (const p of right) {
     if (p.y >= viewTop - 200 && p.y <= viewBottom + 200) ctx.lineTo(p.x, p.y);
   }
-  ctx.lineTo(2000, viewBottom);
+  ctx.lineTo(3000, viewBottom);
   ctx.closePath();
   ctx.fill();
 
-  // Edge glow
   ctx.strokeStyle = '#1a2a3a';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -143,7 +186,6 @@ function drawSubmarine(ctx: CanvasRenderingContext2D, pos: Vec2, rotation: numbe
   ctx.translate(pos.x, pos.y);
   ctx.rotate(rotation);
 
-  // Light cone
   if (lightOn) {
     const gradient = ctx.createRadialGradient(SUB_WIDTH / 2, 0, 5, SUB_WIDTH / 2 + 150, 0, 200);
     gradient.addColorStop(0, 'rgba(180, 220, 255, 0.25)');
@@ -180,13 +222,11 @@ function drawSubmarine(ctx: CanvasRenderingContext2D, pos: Vec2, rotation: numbe
   ctx.arc(SUB_WIDTH / 4, 0, 4, 0, Math.PI * 2);
   ctx.fill();
 
-  // Hull damage cracks
   if (hullRatio < 0.6) {
     ctx.strokeStyle = '#ff4500';
     ctx.lineWidth = 1;
     ctx.globalAlpha = 1 - hullRatio;
     const crackCount = Math.floor((1 - hullRatio) * 8);
-    // Use deterministic crack positions based on hull
     for (let i = 0; i < crackCount; i++) {
       const seed = i * 7.31;
       const cx = Math.sin(seed) * SUB_WIDTH * 0.3;
@@ -205,7 +245,6 @@ function drawSubmarine(ctx: CanvasRenderingContext2D, pos: Vec2, rotation: numbe
 function drawCreature(ctx: CanvasRenderingContext2D, creature: Creature, subDepth: number) {
   const { pos, size, color, glowColor, type, state: cState, health, maxHealth, isBoss } = creature;
 
-  // Boss aura
   if (isBoss) {
     const auraGrad = ctx.createRadialGradient(pos.x, pos.y, size * 0.5, pos.x, pos.y, size * 2.5);
     auraGrad.addColorStop(0, glowColor + '30');
@@ -215,7 +254,6 @@ function drawCreature(ctx: CanvasRenderingContext2D, creature: Creature, subDept
     ctx.arc(pos.x, pos.y, size * 2.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // Boss health bar
     const barW = size * 2;
     const barH = 4;
     const barY = pos.y - size - 15;
@@ -226,9 +264,15 @@ function drawCreature(ctx: CanvasRenderingContext2D, creature: Creature, subDept
     ctx.strokeStyle = '#ff4500';
     ctx.lineWidth = 1;
     ctx.strokeRect(pos.x - barW / 2, barY, barW, barH);
+
+    // Boss name
+    ctx.fillStyle = '#ff4500';
+    ctx.font = 'bold 10px "IBM Plex Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`BOSS: ${type.toUpperCase()}`, pos.x, barY - 5);
+    ctx.textAlign = 'start';
   }
 
-  // Glow
   const glowRadius = size * 1.5;
   const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, glowRadius);
   gradient.addColorStop(0, glowColor + '40');
@@ -246,12 +290,13 @@ function drawCreature(ctx: CanvasRenderingContext2D, creature: Creature, subDept
     case 'fish': drawFish(ctx, pos, size, creature.vel); break;
     case 'jellyfish': drawJellyfish(ctx, pos, size); break;
     case 'angler': drawAngler(ctx, pos, size, creature.vel); break;
+    case 'eel': drawEel(ctx, pos, size, creature.vel); break;
     case 'squid': drawSquid(ctx, pos, size, creature.vel); break;
     case 'serpent': drawSerpent(ctx, pos, size); break;
     case 'leviathan': drawLeviathan(ctx, pos, size); break;
+    case 'phantom': drawPhantom(ctx, pos, size); break;
   }
 
-  // Damage indicator
   if (health < maxHealth && !isBoss) {
     ctx.globalAlpha = 1 - health / maxHealth;
     ctx.strokeStyle = '#ff4500';
@@ -262,8 +307,15 @@ function drawCreature(ctx: CanvasRenderingContext2D, creature: Creature, subDept
     ctx.globalAlpha = 1;
   }
 
-  if (cState === 'chase') {
-    ctx.fillStyle = '#ff4500';
+  // State indicator
+  if (cState === 'chase' || cState === 'charge') {
+    ctx.fillStyle = cState === 'charge' ? '#ff0000' : '#ff4500';
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y - size - 5, cState === 'charge' ? 4 : 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (cState === 'ambush') {
+    ctx.fillStyle = '#ffaa00';
     ctx.beginPath();
     ctx.arc(pos.x, pos.y - size - 5, 3, 0, Math.PI * 2);
     ctx.fill();
@@ -271,47 +323,90 @@ function drawCreature(ctx: CanvasRenderingContext2D, creature: Creature, subDept
 }
 
 function drawProjectiles(ctx: CanvasRenderingContext2D, projectiles: Projectile[]) {
-  ctx.strokeStyle = '#ffaa00';
-  ctx.lineWidth = 2;
   for (const p of projectiles) {
     const angle = Math.atan2(p.vel.y, p.vel.x);
-    const len = 12;
-    ctx.beginPath();
-    ctx.moveTo(p.pos.x - Math.cos(angle) * len, p.pos.y - Math.sin(angle) * len);
-    ctx.lineTo(p.pos.x, p.pos.y);
-    ctx.stroke();
 
-    // Glow tip
-    ctx.fillStyle = '#ffdd44';
-    ctx.beginPath();
-    ctx.arc(p.pos.x, p.pos.y, 2, 0, Math.PI * 2);
-    ctx.fill();
+    switch (p.type) {
+      case 'harpoon': {
+        ctx.strokeStyle = '#ffaa00';
+        ctx.lineWidth = 2;
+        const len = 12;
+        ctx.beginPath();
+        ctx.moveTo(p.pos.x - Math.cos(angle) * len, p.pos.y - Math.sin(angle) * len);
+        ctx.lineTo(p.pos.x, p.pos.y);
+        ctx.stroke();
+        ctx.fillStyle = '#ffdd44';
+        ctx.beginPath();
+        ctx.arc(p.pos.x, p.pos.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case 'torpedo': {
+        ctx.fillStyle = '#ff6600';
+        ctx.strokeStyle = '#ff4400';
+        ctx.lineWidth = 2;
+        ctx.save();
+        ctx.translate(p.pos.x, p.pos.y);
+        ctx.rotate(angle);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 10, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        // Trail
+        ctx.fillStyle = '#ff880040';
+        ctx.beginPath();
+        ctx.arc(p.pos.x - Math.cos(angle) * 12, p.pos.y - Math.sin(angle) * 12, 6, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case 'plasma': {
+        ctx.fillStyle = '#e0b0ff';
+        ctx.shadowColor = '#e0b0ff';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(p.pos.x, p.pos.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        break;
+      }
+      case 'shock': {
+        ctx.strokeStyle = '#6bb5ff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(p.pos.x, p.pos.y, 5, 0, Math.PI * 2);
+        ctx.stroke();
+        break;
+      }
+    }
   }
 }
 
-function drawMinimap(ctx: CanvasRenderingContext2D, state: GameState, canvasW: number, canvasH: number) {
-  const mapW = 120;
-  const mapH = 180;
+function drawMinimap(ctx: CanvasRenderingContext2D, state: GameState, canvasW: number, canvasH: number, otherPlayers?: Record<string, PlayerData>) {
+  const mapW = 140;
+  const mapH = 200;
   const mapX = canvasW - mapW - 15;
   const mapY = 50;
   const maxDepth = 8000;
 
-  ctx.fillStyle = 'rgba(16, 20, 24, 0.8)';
+  ctx.fillStyle = 'rgba(16, 20, 24, 0.85)';
   ctx.fillRect(mapX, mapY, mapW, mapH);
   ctx.strokeStyle = '#1a2a3a';
   ctx.lineWidth = 1;
   ctx.strokeRect(mapX, mapY, mapW, mapH);
 
-  // Zone bands
-  const zones = DEPTH_ZONES;
-  for (const z of zones) {
+  for (const z of DEPTH_ZONES) {
     const y1 = mapY + (z.minDepth / maxDepth) * mapH;
     const y2 = mapY + (z.maxDepth / maxDepth) * mapH;
     ctx.fillStyle = z.waterColor + '80';
     ctx.fillRect(mapX, y1, mapW, y2 - y1);
+
+    // Zone label
+    ctx.fillStyle = '#4a5a6440';
+    ctx.font = '7px "IBM Plex Mono", monospace';
+    ctx.fillText(z.name.split(' ')[0], mapX + 3, y1 + 9);
   }
 
-  // Terrain walls on minimap
   const scale = mapW / (state.worldWidth * 1.5);
   const centerX = mapX + mapW / 2;
   ctx.strokeStyle = '#2a3a4a';
@@ -333,7 +428,7 @@ function drawMinimap(ctx: CanvasRenderingContext2D, state: GameState, canvasW: n
   }
   ctx.stroke();
 
-  // Creature dots
+  // Creatures
   for (const c of state.creatures) {
     const cx = centerX + c.pos.x * scale;
     const cy = mapY + (c.pos.y / maxDepth) * mapH;
@@ -342,6 +437,20 @@ function drawMinimap(ctx: CanvasRenderingContext2D, state: GameState, canvasW: n
       ctx.beginPath();
       ctx.arc(cx, cy, c.isBoss ? 3 : 1.5, 0, Math.PI * 2);
       ctx.fill();
+    }
+  }
+
+  // Other players on minimap
+  if (otherPlayers) {
+    for (const [, player] of Object.entries(otherPlayers)) {
+      if (player.alive) {
+        const px = centerX + player.odometry.x * scale;
+        const py = mapY + (player.depth / maxDepth) * mapH;
+        ctx.fillStyle = '#00ff88';
+        ctx.beginPath();
+        ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 
@@ -358,7 +467,6 @@ function drawMinimap(ctx: CanvasRenderingContext2D, state: GameState, canvasW: n
   ctx.arc(subX, subY, 5, 0, Math.PI * 2);
   ctx.stroke();
 
-  // Label
   ctx.fillStyle = '#6a7a84';
   ctx.font = '9px "IBM Plex Mono", monospace';
   ctx.fillText('MAP', mapX + 4, mapY + 12);
@@ -410,11 +518,13 @@ function drawAngler(ctx: CanvasRenderingContext2D, pos: Vec2, size: number, vel:
   ctx.ellipse(0, 0, size, size * 0.6, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
+  // Jaw
   ctx.beginPath();
   ctx.moveTo(size * 0.5, size * 0.3);
   ctx.lineTo(size * 1.1, size * 0.1);
   ctx.lineTo(size * 0.5, -size * 0.1);
   ctx.stroke();
+  // Lure
   ctx.fillStyle = '#ffaa00';
   ctx.beginPath();
   ctx.arc(size * 0.3, -size * 0.9, 4, 0, Math.PI * 2);
@@ -424,6 +534,38 @@ function drawAngler(ctx: CanvasRenderingContext2D, pos: Vec2, size: number, vel:
   ctx.moveTo(0, -size * 0.5);
   ctx.quadraticCurveTo(size * 0.1, -size * 0.8, size * 0.3, -size * 0.9);
   ctx.stroke();
+  ctx.restore();
+}
+
+function drawEel(ctx: CanvasRenderingContext2D, pos: Vec2, size: number, vel: Vec2) {
+  const angle = Math.atan2(vel.y, vel.x);
+  ctx.save();
+  ctx.translate(pos.x, pos.y);
+  ctx.rotate(angle);
+
+  // Sinuous body
+  ctx.lineWidth = size * 0.4;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(size, 0);
+  for (let i = 1; i <= 6; i++) {
+    const wave = Math.sin(Date.now() / 200 + i * 1.5) * 8;
+    ctx.lineTo(size - i * size * 0.35, wave);
+  }
+  ctx.stroke();
+
+  // Head
+  ctx.fillStyle = ctx.strokeStyle as string;
+  ctx.beginPath();
+  ctx.arc(size, 0, size * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eyes
+  ctx.fillStyle = '#6bb5ff';
+  ctx.beginPath();
+  ctx.arc(size * 1.1, -size * 0.15, 2, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.restore();
 }
 
@@ -508,6 +650,52 @@ function drawLeviathan(ctx: CanvasRenderingContext2D, pos: Vec2, size: number) {
   }
 }
 
+function drawPhantom(ctx: CanvasRenderingContext2D, pos: Vec2, size: number) {
+  // Ghostly translucent entity
+  const flickerAlpha = 0.4 + Math.sin(Date.now() / 300) * 0.2;
+  ctx.globalAlpha = flickerAlpha;
+
+  const gradient = ctx.createRadialGradient(pos.x, pos.y, size * 0.2, pos.x, pos.y, size);
+  gradient.addColorStop(0, '#e0b0ff');
+  gradient.addColorStop(0.5, '#1a0a2e');
+  gradient.addColorStop(1, '#1a0a2e00');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.ellipse(pos.x, pos.y, size, size * 0.7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eyes
+  ctx.fillStyle = '#e0b0ff';
+  ctx.shadowColor = '#e0b0ff';
+  ctx.shadowBlur = 15;
+  ctx.beginPath();
+  ctx.arc(pos.x + size * 0.2, pos.y - size * 0.1, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(pos.x + size * 0.2, pos.y + size * 0.1, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Tendrils
+  ctx.strokeStyle = '#e0b0ff60';
+  ctx.lineWidth = 3;
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI * 2;
+    const wave = Math.sin(Date.now() / 500 + i * 1.2) * 15;
+    ctx.beginPath();
+    ctx.moveTo(pos.x + Math.cos(angle) * size * 0.5, pos.y + Math.sin(angle) * size * 0.4);
+    ctx.quadraticCurveTo(
+      pos.x + Math.cos(angle) * size * 1.2 + wave,
+      pos.y + Math.sin(angle) * size * 0.8,
+      pos.x + Math.cos(angle) * size * 1.5,
+      pos.y + Math.sin(angle) * size + wave
+    );
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 1;
+}
+
 function drawSonarPing(ctx: CanvasRenderingContext2D, ping: SonarPing) {
   ctx.strokeStyle = `rgba(180, 197, 207, ${ping.alpha})`;
   ctx.lineWidth = 2;
@@ -533,6 +721,18 @@ function drawParticles(ctx: CanvasRenderingContext2D, particles: Particle[]) {
       ctx.fillStyle = '#ffd700';
       ctx.font = '10px "IBM Plex Mono", monospace';
       ctx.fillText('$', p.pos.x - 3, p.pos.y + 3);
+    } else if (p.type === 'electric') {
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p.pos.x, p.pos.y);
+      ctx.lineTo(p.pos.x + (Math.random() - 0.5) * 10, p.pos.y + (Math.random() - 0.5) * 10);
+      ctx.stroke();
+    } else if (p.type === 'explosion') {
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.pos.x, p.pos.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
     } else {
       ctx.fillStyle = p.color;
       ctx.beginPath();

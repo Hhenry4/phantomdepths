@@ -28,15 +28,15 @@ export function generateTerrain(seed: number = Date.now()): { left: Vec2[]; righ
     const zoneConfig = DEPTH_ZONES.find(z => z.zone === zone);
     const density = zoneConfig?.terrainDensity ?? 0.5;
 
-    const narrowing = Math.min(depth / MAX_DEPTH * 150, 150);
-    const jaggedness = 12 + density * 25;
+    const narrowing = Math.min(depth / MAX_DEPTH * 200, 200);
+    const jaggedness = 15 + density * 35;
 
     leftX = -WORLD_WIDTH / 2 + narrowing + (rand() - 0.5) * jaggedness;
     rightX = WORLD_WIDTH / 2 - narrowing + (rand() - 0.5) * jaggedness;
 
-    // Caves (wider sections)
-    if (rand() < 0.06 && depth > 100) {
-      const caveSize = 80 + rand() * 120;
+    // Caves
+    if (rand() < 0.07 && depth > 100) {
+      const caveSize = 100 + rand() * 200;
       leftX -= caveSize;
       rightX += caveSize;
       if (rand() < 0.5) {
@@ -50,23 +50,29 @@ export function generateTerrain(seed: number = Date.now()): { left: Vec2[]; righ
     }
 
     // Narrow passages
-    if (rand() < 0.025 && depth > 500) {
-      leftX += 30 + rand() * 50;
-      rightX -= 30 + rand() * 50;
+    if (rand() < 0.02 && depth > 500) {
+      leftX += 40 + rand() * 60;
+      rightX -= 40 + rand() * 60;
     }
 
-    // Minimum passage width
-    if (rightX - leftX < 150) {
+    // Wider chambers
+    if (rand() < 0.04 && depth > 300) {
+      leftX -= 100 + rand() * 150;
+      rightX += 100 + rand() * 150;
+    }
+
+    // Min passage width
+    if (rightX - leftX < 200) {
       const center = (leftX + rightX) / 2;
-      leftX = center - 75;
-      rightX = center + 75;
+      leftX = center - 100;
+      rightX = center + 100;
     }
 
     left.push({ x: leftX, y });
     right.push({ x: rightX, y });
 
     // Spawn terrain features
-    if (depth > 50 && rand() < 0.015) {
+    if (depth > 50 && rand() < 0.02) {
       const featureTypes: TerrainFeature['type'][] =
         depth < 200 ? ['coral', 'coral', 'coral'] :
         depth < 1000 ? ['coral', 'vent', 'wreck'] :
@@ -82,9 +88,9 @@ export function generateTerrain(seed: number = Date.now()): { left: Vec2[]; righ
         ruin: '#8b7355',
       };
       features.push({
-        pos: { x: (leftX + rightX) / 2 + (rand() - 0.5) * (rightX - leftX) * 0.5, y },
+        pos: { x: (leftX + rightX) / 2 + (rand() - 0.5) * (rightX - leftX) * 0.6, y },
         type: ft,
-        size: 15 + rand() * 25,
+        size: 15 + rand() * 30,
         color: featureColors[ft] || '#6a7a84',
       });
     }
