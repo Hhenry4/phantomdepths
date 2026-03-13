@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { GameScreen, PlayerProgress, WeaponType, getXpProgress, getLevelFromXp } from '../game/types';
+import { GameScreen, PlayerProgress, WeaponType, getLevelFromXp } from '../game/types';
 import { QUESTS, UPGRADES, WEAPON_SHOP } from '../game/constants';
 import GameCanvas from '../game/components/GameCanvas';
 import HomeScreen from '../game/components/HomeScreen';
@@ -8,8 +8,6 @@ import MultiplayerLobby from '../game/components/MultiplayerLobby';
 import Tutorial from '../game/components/Tutorial';
 import { useAuth } from '../firebase/AuthContext';
 import { saveProgressToCloud, loadProgressFromCloud } from '../firebase/saveSystem';
-
-const STORAGE_KEY = 'phantom_depths_progress';
 
 function defaultProgress(): PlayerProgress {
   return {
@@ -25,47 +23,33 @@ function defaultProgress(): PlayerProgress {
   };
 }
 
-function loadProgress(): PlayerProgress {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (data) {
-      const parsed = JSON.parse(data);
-      return { ...defaultProgress(), ...parsed };
-    }
-  } catch {}
-  return defaultProgress();
-}
-
-function saveProgress(progress: PlayerProgress) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
-}
-
 const Index: React.FC = () => {
   const [screen, setScreen] = useState<GameScreen>('home');
-  const [progress, setProgress] = useState<PlayerProgress>(loadProgress);
-  const [showTutorial, setShowTutorial] = useState(() => !localStorage.getItem('phantom_depths_tutorial_done'));
+  const [progress, setProgress] = useState<PlayerProgress>(defaultProgress);
+  const [showTutorial, setShowTutorial] = useState(false);
   const [multiplayerRoomId, setMultiplayerRoomId] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const { user } = useAuth();
 
-  // Load cloud save on login
+  // Load from Firestore on login
   useEffect(() => {
-    if (user) {
+    if (user && !loaded) {
       loadProgressFromCloud(user.uid).then(cloudProgress => {
         if (cloudProgress) {
-          const local = loadProgress();
-          // Use whichever has more progress
-          const merged = cloudProgress.deepestEver > local.deepestEver || cloudProgress.totalKills > local.totalKills
-            ? { ...defaultProgress(), ...cloudProgress }
-            : local;
-          setProgress(merged);
-          saveProgress(merged);
+          setProgress({ ...defaultProgress(), ...cloudProgress });
+        } else {
+          // First time - show tutorial
+          setShowTutorial(true);
         }
-      });
+        setLoaded(true);
+      }).catch(() => setLoaded(true));
+    } else if (!user) {
+      setLoaded(false);
+      setProgress(defaultProgress());
     }
-  }, [user]);
+  }, [user, loaded]);
 
   const persistProgress = useCallback((next: PlayerProgress) => {
-    saveProgress(next);
     if (user) {
       saveProgressToCloud(user.uid, next);
     }
@@ -155,7 +139,6 @@ const Index: React.FC = () => {
 
   const handleTutorialDone = useCallback(() => {
     setShowTutorial(false);
-    localStorage.setItem('phantom_depths_tutorial_done', 'true');
   }, []);
 
   if (showTutorial) {

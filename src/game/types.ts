@@ -7,6 +7,7 @@ export interface SubmarineState {
   pos: Vec2;
   vel: Vec2;
   rotation: number;
+  aimAngle: number; // Independent aim angle from mouse
   thrust: number;
   hull: number;
   maxHull: number;
@@ -32,7 +33,9 @@ export interface WeaponSlot {
   cooldown: number;
 }
 
-export type WeaponType = 'harpoon' | 'shock' | 'torpedo' | 'plasma';
+export type WeaponType = 'harpoon' | 'shock' | 'torpedo' | 'plasma' | 'railgun' | 'flak' | 'cryo' | 'vortex';
+
+export type WeaponTier = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic';
 
 export interface Creature {
   id: string;
@@ -69,9 +72,11 @@ export interface TerrainSegment {
 
 export interface TerrainFeature {
   pos: Vec2;
-  type: 'cave' | 'ruin' | 'wreck' | 'coral' | 'vent' | 'crystal';
+  type: 'cave' | 'ruin' | 'wreck' | 'kelp' | 'rock_formation' | 'chest';
   size: number;
   color: string;
+  collected?: boolean;
+  coinsValue?: number;
 }
 
 export interface Particle {
@@ -114,6 +119,7 @@ export interface GameState {
   killCount: Record<string, number>;
   bossesDefeated: string[];
   projectiles: Projectile[];
+  generatedDepth: number; // How deep terrain has been generated
 }
 
 export interface Projectile {
@@ -123,6 +129,7 @@ export interface Projectile {
   damage: number;
   type: WeaponType;
   radius?: number;
+  special?: string; // Special ability tag
 }
 
 export interface ZoneConfig {
@@ -149,6 +156,7 @@ export interface PlayerProgress {
   xp: number;
   level: number;
   weaponsOwned: WeaponType[];
+  equippedWeapon?: WeaponType;
 }
 
 export interface Upgrade {
@@ -169,6 +177,8 @@ export interface WeaponShopItem {
   damage: number;
   ammo: number;
   fireRate: number;
+  tier: WeaponTier;
+  special?: string;
 }
 
 export interface Quest {
@@ -213,3 +223,11 @@ export function getXpProgress(totalXp: number): { level: number; current: number
   }
   return { level, current: remaining, needed: xpNeeded };
 }
+
+export const TIER_COLORS: Record<WeaponTier, string> = {
+  common: '#b4c5cf',
+  rare: '#4da6ff',
+  epic: '#a855f7',
+  legendary: '#f59e0b',
+  mythic: '#ef4444',
+};

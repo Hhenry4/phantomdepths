@@ -7,6 +7,12 @@ import HUD from './HUD';
 import { useAuth } from '../../firebase/AuthContext';
 import { updatePlayerData, subscribeToRoom, leaveRoom } from '../../firebase/multiplayer';
 import type { PlayerData } from '../../firebase/multiplayer';
+import {
+  resumeAudio, playHarpoonSound, playTorpedoSound, playPlasmaSound,
+  playShockSound, playSonarPing, playDamageSound, playChestSound,
+  playFlakSound, playCryoSound, playRailgunSound, playVortexSound,
+  playReloadSound, updateEngineHum, stopEngine, playExplosionSound
+} from '../engine/Audio';
 
 interface GameCanvasProps {
   progress: PlayerProgress;
@@ -21,6 +27,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
   const inputRef = useRef<InputManager | null>(null);
   const animFrameRef = useRef<number>(0);
   const otherPlayersRef = useRef<Record<string, PlayerData>>({});
+  const prevHullRef = useRef<number>(0);
+  const prevCoinsRef = useRef<number>(0);
   const { user } = useAuth();
 
   const [hudState, setHudState] = useState({
@@ -37,6 +45,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
   const initGame = useCallback(() => {
     resetBossTracker();
     stateRef.current = createInitialState(progress);
+    prevHullRef.current = stateRef.current.sub.hull;
+    prevCoinsRef.current = 0;
   }, [progress]);
 
   useEffect(() => { initGame(); }, [initGame]);
@@ -97,8 +107,57 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
       state.paused = !state.paused;
     }
 
+    // Resume audio on any interaction
+    if (inputRef.current.mouseDown || inputRef.current.keys.size > 0) {
+      resumeAudio();
+    }
+
     if (!state.paused && !state.gameOver) {
-      updateGame(state, inputRef.current, 1, progress);
+      // Sound effects based on state changes
+      const prevProj = state.projectiles.length;
+      const prevSonar = state.sonarPings.length;
+
+      updateGame(state, inputRef.current, 1, progress, canvas.width, canvas.height);
+
+      // Weapon fire sounds
+      if (state.projectiles.length > prevProj) {
+        const newest = state.projectiles[state.projectiles.length - 1];
+        switch (newest.type) {
+          case 'harpoon': playHarpoonSound(); break;
+          case 'torpedo': playTorpedoSound(); break;
+          case 'plasma': playPlasmaSound(); break;
+          case 'shock': playShockSound(); break;
+          case 'flak': playFlakSound(); break;
+          case 'cryo': playCryoSound(); break;
+          case 'railgun': playRailgunSound(); break;
+          case 'vortex': playVortexSound(); break;
+        }
+      }
+
+      // Sonar sound
+      if (state.sonarPings.length > prevSonar) {
+        playSonarPing();
+      }
+
+      // Damage sound
+      if (state.sub.hull < prevHullRef.current - 3) {
+        playDamageSound();
+      }
+      prevHullRef.current = state.sub.hull;
+
+      // Chest sound
+      if (state.coins > prevCoinsRef.current + 5) {
+        playChestSound();
+      }
+      prevCoinsRef.current = state.coins;
+
+      // Engine hum
+      updateEngineHum(state.sub.engineNoise);
+
+      // Reload sound
+      if (inputRef.current.wasPressed('r')) {
+        playReloadSound();
+      }
     } else {
       inputRef.current.clearFrame();
     }
@@ -137,6 +196,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
   }, [initGame, endGame]);
 
   const handleReturnToBase = useCallback(() => {
+    stopEngine();
     const state = stateRef.current;
     if (state) endGame(state);
     onReturnToBase();
@@ -154,6 +214,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
         window.removeEventListener('resize', resize);
         cancelAnimationFrame(animFrameRef.current);
         inputRef.current?.destroy();
+        stopEngine();
       };
     }
   }, [gameLoop]);
@@ -166,7 +227,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
   }, [hudState.paused, endGame]);
 
   return (
-    <div className="relative w-full h-screen overflow-hidden" style={{ background: '#010810' }}>
+    <div className="relative w-full h-screen overflow-hidden" style={{ background: '#010810', cursor: 'crosshair' }}>
       <canvas ref={canvasRef} className="block w-full h-full" style={{ imageRendering: 'auto' }} />
       <HUD
         {...hudState}

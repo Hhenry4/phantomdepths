@@ -1,11 +1,11 @@
-import { ref, set, get, onValue, remove, push, update, off } from 'firebase/database';
+import { ref, set, get, onValue, remove, update, off } from 'firebase/database';
 import { rtdb } from './config';
 
 export interface MultiplayerRoom {
   id: string;
   hostName: string;
   hostId: string;
-  password: string;
+  roomCode: string;
   players: Record<string, PlayerData>;
   createdAt: number;
 }
@@ -20,13 +20,13 @@ export interface PlayerData {
   alive: boolean;
 }
 
-export async function createRoom(hostId: string, hostName: string, password: string): Promise<string> {
-  const roomRef = push(ref(rtdb, 'rooms'));
-  const roomId = roomRef.key!;
+export async function createRoom(hostId: string, hostName: string, roomCode: string): Promise<string> {
+  // Use roomCode as the room key for easy lookup
+  const roomRef = ref(rtdb, `rooms/${roomCode}`);
   await set(roomRef, {
     hostName,
     hostId,
-    password,
+    roomCode,
     createdAt: Date.now(),
     players: {
       [hostId]: {
@@ -40,17 +40,15 @@ export async function createRoom(hostId: string, hostName: string, password: str
       },
     },
   });
-  return roomId;
+  return roomCode;
 }
 
-export async function joinRoom(roomId: string, password: string, playerId: string, playerName: string): Promise<boolean> {
-  const roomRef = ref(rtdb, `rooms/${roomId}`);
+export async function joinRoom(roomCode: string, _password: string, playerId: string, playerName: string): Promise<boolean> {
+  const roomRef = ref(rtdb, `rooms/${roomCode}`);
   const snap = await get(roomRef);
   if (!snap.exists()) return false;
-  const room = snap.val();
-  if (room.password !== password) return false;
 
-  await update(ref(rtdb, `rooms/${roomId}/players/${playerId}`), {
+  await update(ref(rtdb, `rooms/${roomCode}/players/${playerId}`), {
     name: playerName,
     odometry: { x: 0, y: 50, rotation: 0 },
     depth: 0,
