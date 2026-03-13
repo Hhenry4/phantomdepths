@@ -1,5 +1,5 @@
 import { Vec2, TerrainFeature, DepthZone } from '../types';
-import { WORLD_WIDTH, MAX_DEPTH, DEPTH_ZONES } from '../constants';
+import { WORLD_WIDTH, DEPTH_ZONES, TERRAIN_CHUNK_SIZE } from '../constants';
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -9,94 +9,163 @@ function seededRandom(seed: number): () => number {
   };
 }
 
-export function generateTerrain(seed: number = Date.now()): { left: Vec2[]; right: Vec2[]; features: TerrainFeature[] } {
+export function generateTerrain(seed: number = Date.now(), maxDepth: number = 2000): { left: Vec2[]; right: Vec2[]; features: TerrainFeature[] } {
   const rand = seededRandom(seed);
   const left: Vec2[] = [];
   const right: Vec2[] = [];
   const features: TerrainFeature[] = [];
 
+  generateTerrainChunk(rand, left, right, features, 0, maxDepth);
+
+  return { left, right, features };
+}
+
+export function extendTerrain(
+  terrain: { left: Vec2[]; right: Vec2[]; features: TerrainFeature[] },
+  currentGenDepth: number,
+  targetDepth: number,
+  seed: number
+): number {
+  if (targetDepth <= currentGenDepth) return currentGenDepth;
+
+  const newMaxDepth = targetDepth + TERRAIN_CHUNK_SIZE;
+  const rand = seededRandom(seed + Math.floor(currentGenDepth));
+
+  // Advance rand to match position
+  const warmupSteps = Math.floor(currentGenDepth / 20);
+  for (let i = 0; i < warmupSteps % 100; i++) rand();
+
+  generateTerrainChunk(rand, terrain.left, terrain.right, terrain.features, currentGenDepth, newMaxDepth);
+
+  return newMaxDepth;
+}
+
+function generateTerrainChunk(
+  rand: () => number,
+  left: Vec2[],
+  right: Vec2[],
+  features: TerrainFeature[],
+  startDepth: number,
+  endDepth: number
+) {
   const segmentHeight = 20;
-  const segments = Math.ceil(MAX_DEPTH / segmentHeight);
+  const startSeg = Math.floor(startDepth / segmentHeight);
+  const endSeg = Math.ceil(endDepth / segmentHeight);
 
-  let leftX = -WORLD_WIDTH / 2;
-  let rightX = WORLD_WIDTH / 2;
+  // Get last known positions
+  let leftX = left.length > 0 ? left[left.length - 1].x : -WORLD_WIDTH / 2;
+  let rightX = right.length > 0 ? right[right.length - 1].x : WORLD_WIDTH / 2;
 
-  for (let i = 0; i <= segments; i++) {
+  for (let i = startSeg; i <= endSeg; i++) {
     const y = i * segmentHeight;
+    if (y < startDepth) continue;
+
     const depth = y;
     const zone = getZoneAtDepth(depth);
     const zoneConfig = DEPTH_ZONES.find(z => z.zone === zone);
     const density = zoneConfig?.terrainDensity ?? 0.5;
 
-    const narrowing = Math.min(depth / MAX_DEPTH * 200, 200);
-    const jaggedness = 15 + density * 35;
+    // Gradually narrow with organic wave patterns
+    const baseNarrowing = Math.min(depth / 20000 * 200, 400);
+    const waveA = Math.sin(depth * 0.003) * 80;
+    const waveB = Math.sin(depth * 0.0007) * 150;
+    const jaggedness = 10 + density * 25;
 
-    leftX = -WORLD_WIDTH / 2 + narrowing + (rand() - 0.5) * jaggedness;
-    rightX = WORLD_WIDTH / 2 - narrowing + (rand() - 0.5) * jaggedness;
+    leftX = -WORLD_WIDTH / 2 + baseNarrowing + waveA + (rand() - 0.5) * jaggedness;
+    rightX = WORLD_WIDTH / 2 - baseNarrowing + waveB + (rand() - 0.5) * jaggedness;
 
-    // Caves
-    if (rand() < 0.07 && depth > 100) {
-      const caveSize = 100 + rand() * 200;
+    // Cave systems - large open chambers
+    if (rand() < 0.04 && depth > 100) {
+      const caveSize = 150 + rand() * 300;
       leftX -= caveSize;
       rightX += caveSize;
-      if (rand() < 0.5) {
+
+      // Add cave entrance marker
+      if (rand() < 0.6) {
         features.push({
-          pos: { x: leftX + 40, y },
+          pos: { x: (leftX + rightX) / 2, y },
           type: 'cave',
-          size: caveSize * 0.5,
+          size: caveSize * 0.4,
           color: '#0a1520',
         });
       }
     }
 
-    // Narrow passages
-    if (rand() < 0.02 && depth > 500) {
-      leftX += 40 + rand() * 60;
-      rightX -= 40 + rand() * 60;
+    // Narrow passages (less frequent)
+    if (rand() < 0.015 && depth > 500) {
+      leftX += 60 + rand() * 80;
+      rightX -= 60 + rand() * 80;
     }
 
     // Wider chambers
-    if (rand() < 0.04 && depth > 300) {
-      leftX -= 100 + rand() * 150;
-      rightX += 100 + rand() * 150;
+    if (rand() < 0.03 && depth > 300) {
+      leftX -= 120 + rand() * 200;
+      rightX += 120 + rand() * 200;
     }
 
     // Min passage width
-    if (rightX - leftX < 200) {
+    if (rightX - leftX < 250) {
       const center = (leftX + rightX) / 2;
-      leftX = center - 100;
-      rightX = center + 100;
+      leftX = center - 125;
+      rightX = center + 125;
     }
 
     left.push({ x: leftX, y });
     right.push({ x: rightX, y });
 
-    // Spawn terrain features
-    if (depth > 50 && rand() < 0.02) {
-      const featureTypes: TerrainFeature['type'][] =
-        depth < 200 ? ['coral', 'coral', 'coral'] :
-        depth < 1000 ? ['coral', 'vent', 'wreck'] :
-        depth < 4000 ? ['wreck', 'vent', 'crystal', 'ruin'] :
-        ['ruin', 'crystal', 'vent', 'ruin'];
+    // Terrain features - ocean-like
+    if (depth > 30 && rand() < 0.015) {
+      const passageWidth = rightX - leftX;
+      const featureX = leftX + passageWidth * (0.15 + rand() * 0.7);
 
-      const ft = featureTypes[Math.floor(rand() * featureTypes.length)];
-      const featureColors: Record<string, string> = {
-        coral: '#ff6b6b',
-        vent: '#ff8c00',
-        wreck: '#4a6a7a',
-        crystal: '#00e5ff',
-        ruin: '#8b7355',
-      };
+      if (depth < 300) {
+        // Shallow: kelp forests, rock formations
+        const ft = rand() < 0.5 ? 'kelp' : 'rock_formation';
+        features.push({
+          pos: { x: featureX, y },
+          type: ft as TerrainFeature['type'],
+          size: 15 + rand() * 25,
+          color: ft === 'kelp' ? '#2d5a27' : '#4a5568',
+        });
+      } else if (depth < 1500) {
+        // Mid depth: wrecks, rock formations
+        const ft = rand() < 0.4 ? 'wreck' : 'rock_formation';
+        features.push({
+          pos: { x: featureX, y },
+          type: ft as TerrainFeature['type'],
+          size: 20 + rand() * 35,
+          color: ft === 'wreck' ? '#4a6a7a' : '#3a4a58',
+        });
+      } else {
+        // Deep: ruins, caves
+        const ft = rand() < 0.5 ? 'ruin' : 'cave';
+        features.push({
+          pos: { x: featureX, y },
+          type: ft as TerrainFeature['type'],
+          size: 25 + rand() * 40,
+          color: ft === 'ruin' ? '#8b7355' : '#0a1520',
+        });
+      }
+    }
+
+    // Treasure chests (coins!)
+    if (rand() < 0.006 && depth > 50) {
+      const passageWidth = rightX - leftX;
+      const chestX = leftX + passageWidth * (0.2 + rand() * 0.6);
+      const coinValue = depth < 500 ? 10 + Math.floor(rand() * 15) :
+                        depth < 2000 ? 25 + Math.floor(rand() * 40) :
+                        depth < 5000 ? 60 + Math.floor(rand() * 80) :
+                        150 + Math.floor(rand() * 200);
       features.push({
-        pos: { x: (leftX + rightX) / 2 + (rand() - 0.5) * (rightX - leftX) * 0.6, y },
-        type: ft,
-        size: 15 + rand() * 30,
-        color: featureColors[ft] || '#6a7a84',
+        pos: { x: chestX, y },
+        type: 'chest',
+        size: 12 + rand() * 8,
+        color: '#ffd700',
+        collected: false,
+        coinsValue: coinValue,
       });
     }
   }
-
-  return { left, right, features };
 }
 
 export function getZoneAtDepth(depth: number): DepthZone {

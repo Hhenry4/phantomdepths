@@ -12,7 +12,7 @@ export const SUB_DRAG = 0.96;
 export const SUB_GRAVITY = 0.008;
 
 export const WORLD_WIDTH = 3000;
-export const MAX_DEPTH = 8000;
+export const MAX_DEPTH = 99999; // Infinite - terrain generates as you go
 
 export const LIGHT_RADIUS_BASE = 250;
 export const SONAR_MAX_RADIUS = 600;
@@ -23,6 +23,8 @@ export const HARPOON_RANGE = 500;
 export const HARPOON_COOLDOWN = 15;
 export const HARPOON_HIT_RADIUS = 25;
 export const HARPOON_BASE_DAMAGE = 20;
+
+export const TERRAIN_CHUNK_SIZE = 2000; // Generate terrain in chunks of 2000 depth units
 
 export const XP_PER_KILL: Record<string, number> = {
   fish: 5,
@@ -45,7 +47,7 @@ export const DEPTH_ZONES: ZoneConfig[] = [
     visibility: 1.5,
     ambientLight: 0.7,
     creatureTypes: ['fish', 'jellyfish'],
-    creatureDensity: 0.3,
+    creatureDensity: 0.15,
     pressureDamage: 0,
     terrainDensity: 0.3,
   },
@@ -58,7 +60,7 @@ export const DEPTH_ZONES: ZoneConfig[] = [
     visibility: 1.0,
     ambientLight: 0.3,
     creatureTypes: ['fish', 'jellyfish', 'angler', 'eel'],
-    creatureDensity: 0.5,
+    creatureDensity: 0.25,
     pressureDamage: 0,
     terrainDensity: 0.5,
   },
@@ -71,7 +73,7 @@ export const DEPTH_ZONES: ZoneConfig[] = [
     visibility: 0.6,
     ambientLight: 0.05,
     creatureTypes: ['angler', 'eel', 'squid', 'serpent'],
-    creatureDensity: 0.7,
+    creatureDensity: 0.3,
     pressureDamage: 0.02,
     terrainDensity: 0.7,
   },
@@ -84,7 +86,7 @@ export const DEPTH_ZONES: ZoneConfig[] = [
     visibility: 0.3,
     ambientLight: 0.01,
     creatureTypes: ['squid', 'serpent', 'leviathan', 'phantom'],
-    creatureDensity: 0.4,
+    creatureDensity: 0.2,
     pressureDamage: 0.06,
     terrainDensity: 0.8,
   },
@@ -92,12 +94,12 @@ export const DEPTH_ZONES: ZoneConfig[] = [
     name: 'Hadal Trench',
     zone: 'hadal',
     minDepth: 6000,
-    maxDepth: 8000,
+    maxDepth: 99999,
     waterColor: '#000408',
     visibility: 0.15,
     ambientLight: 0,
     creatureTypes: ['leviathan', 'serpent', 'phantom'],
-    creatureDensity: 0.2,
+    creatureDensity: 0.12,
     pressureDamage: 0.12,
     terrainDensity: 0.9,
   },
@@ -142,10 +144,19 @@ export const UPGRADES: Upgrade[] = [
 ];
 
 export const WEAPON_SHOP: WeaponShopItem[] = [
-  { type: 'harpoon', name: 'Harpoon Launcher', description: 'Standard projectile weapon', cost: 0, damage: 20, ammo: 20, fireRate: 15 },
-  { type: 'shock', name: 'Shock Cannon', description: 'Stuns all creatures in a radius. Low damage, high utility.', cost: 500, damage: 8, ammo: 10, fireRate: 45 },
-  { type: 'torpedo', name: 'Torpedo Bay', description: 'Massive damage, explosive radius. Very limited ammo.', cost: 1200, damage: 80, ammo: 5, fireRate: 60 },
-  { type: 'plasma', name: 'Plasma Cutter', description: 'Rapid-fire energy beam. Melts through anything.', cost: 2500, damage: 12, ammo: 50, fireRate: 5 },
+  // Common
+  { type: 'harpoon', name: 'Harpoon Launcher', description: 'Standard projectile weapon. Reliable and accurate.', cost: 0, damage: 20, ammo: 20, fireRate: 15, tier: 'common' },
+  // Rare
+  { type: 'shock', name: 'Shock Cannon', description: 'Stuns all creatures in radius. AoE crowd control.', cost: 800, damage: 8, ammo: 12, fireRate: 45, tier: 'rare', special: 'AoE Stun' },
+  { type: 'flak', name: 'Flak Cannon', description: 'Fires a spread of 5 projectiles. Great for groups.', cost: 1200, damage: 10, ammo: 15, fireRate: 30, tier: 'rare', special: 'Shotgun Spread' },
+  // Epic
+  { type: 'torpedo', name: 'Torpedo Bay', description: 'Massive damage with explosive radius. Limited ammo.', cost: 2500, damage: 80, ammo: 6, fireRate: 60, tier: 'epic', special: 'Explosion AoE' },
+  { type: 'cryo', name: 'Cryo Beam', description: 'Freezes targets, slowing them by 80% for 5 seconds.', cost: 3000, damage: 15, ammo: 20, fireRate: 20, tier: 'epic', special: 'Deep Freeze' },
+  // Legendary
+  { type: 'plasma', name: 'Plasma Cutter', description: 'Rapid-fire energy beam. Melts through anything.', cost: 5000, damage: 12, ammo: 60, fireRate: 5, tier: 'legendary', special: 'Rapid Fire' },
+  { type: 'railgun', name: 'Railgun', description: 'Pierces through ALL enemies in a line. Devastating.', cost: 8000, damage: 120, ammo: 8, fireRate: 80, tier: 'legendary', special: 'Piercing Shot' },
+  // Mythic
+  { type: 'vortex', name: 'Void Vortex', description: 'Creates a black hole that pulls and damages all nearby enemies.', cost: 15000, damage: 40, ammo: 3, fireRate: 120, tier: 'mythic', special: 'Gravity Well' },
 ];
 
 export const QUESTS: Quest[] = [
@@ -157,6 +168,7 @@ export const QUESTS: Quest[] = [
   { id: 'q_depth_4000', name: 'Abyssal Explorer', description: 'Reach 4000m depth', type: 'depth', target: 4000, reward: 600, xpReward: 250 },
   { id: 'q_depth_6000', name: 'Hadal Pioneer', description: 'Reach 6000m depth', type: 'depth', target: 6000, reward: 1000, xpReward: 400 },
   { id: 'q_depth_7500', name: 'Edge of the Abyss', description: 'Reach 7500m depth', type: 'depth', target: 7500, reward: 2000, xpReward: 600 },
+  { id: 'q_depth_10000', name: 'Beyond the Known', description: 'Reach 10000m depth', type: 'depth', target: 10000, reward: 5000, xpReward: 1000 },
   // Kill quests
   { id: 'q_kill_10', name: 'First Blood', description: 'Kill 10 creatures total', type: 'kill', target: 10, reward: 80, xpReward: 40 },
   { id: 'q_kill_angler_5', name: 'Angler Hunter', description: 'Kill 5 Anglers', type: 'kill', target: 5, reward: 120, xpReward: 60, creatureType: 'angler' },
@@ -179,6 +191,9 @@ export const QUESTS: Quest[] = [
   { id: 'q_level_5', name: 'Experienced Pilot', description: 'Reach Level 5', type: 'level', target: 5, reward: 300, xpReward: 0 },
   { id: 'q_level_10', name: 'Elite Commander', description: 'Reach Level 10', type: 'level', target: 10, reward: 1000, xpReward: 0 },
   { id: 'q_level_20', name: 'Master of the Deep', description: 'Reach Level 20', type: 'level', target: 20, reward: 3000, xpReward: 0 },
+  // Collect quests
+  { id: 'q_collect_5', name: 'Treasure Hunter', description: 'Collect 5 treasure chests', type: 'collect', target: 5, reward: 200, xpReward: 80 },
+  { id: 'q_collect_20', name: 'Salvage Expert', description: 'Collect 20 treasure chests', type: 'collect', target: 20, reward: 800, xpReward: 300 },
 ];
 
 export const BOSS_SPAWN_DEPTHS = [190, 990, 3950, 5950];

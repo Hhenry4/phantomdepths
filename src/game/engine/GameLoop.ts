@@ -4,10 +4,10 @@ import {
   SONAR_COOLDOWN, SONAR_MAX_RADIUS, WORLD_WIDTH,
   HARPOON_SPEED, HARPOON_RANGE, HARPOON_COOLDOWN, HARPOON_HIT_RADIUS,
   HARPOON_BASE_DAMAGE, BOSS_SPAWN_DEPTHS, COIN_VALUES, XP_PER_KILL,
-  WEAPON_SHOP,
+  WEAPON_SHOP, TERRAIN_CHUNK_SIZE,
 } from '../constants';
 import { InputManager } from './Input';
-import { generateTerrain, getZoneAtDepth, getZoneConfig } from './Terrain';
+import { generateTerrain, extendTerrain, getZoneAtDepth, getZoneConfig } from './Terrain';
 import { spawnCreaturesForDepth, spawnBoss, updateCreature } from './Creatures';
 
 export function applyUpgrades(progress: PlayerProgress): {
@@ -34,8 +34,12 @@ export function applyUpgrades(progress: PlayerProgress): {
   };
 }
 
+let terrainSeed = Date.now();
+
 export function createInitialState(progress?: PlayerProgress): GameState {
-  const terrain = generateTerrain();
+  terrainSeed = Date.now();
+  const initialGenDepth = 2000;
+  const terrain = generateTerrain(terrainSeed, initialGenDepth);
   const ups = progress ? applyUpgrades(progress) : {
     maxHull: 100, maxOxygen: 100, maxPower: 100,
     speed: 1, harpoonDamage: HARPOON_BASE_DAMAGE, maxAmmo: 20,
@@ -43,7 +47,6 @@ export function createInitialState(progress?: PlayerProgress): GameState {
     stealthBonus: 0, regenLevel: 0, lightLevel: 0,
   };
 
-  // Build weapon slots from owned weapons
   const weaponsOwned = progress?.weaponsOwned || ['harpoon'];
   const weapons = weaponsOwned.map(wType => {
     const shopItem = WEAPON_SHOP.find(w => w.type === wType);
@@ -62,6 +65,7 @@ export function createInitialState(progress?: PlayerProgress): GameState {
       pos: { x: 0, y: 50 },
       vel: { x: 0, y: 0 },
       rotation: Math.PI / 2,
+      aimAngle: Math.PI / 2,
       thrust: 0,
       hull: ups.maxHull,
       maxHull: ups.maxHull,
@@ -97,12 +101,13 @@ export function createInitialState(progress?: PlayerProgress): GameState {
     resources: { coral: 0, metal: 0, crystal: 0, organism: 0, artifact: 0 },
     killCount: {},
     bossesDefeated: [],
+    generatedDepth: initialGenDepth,
   };
 }
 
 let upgradeCache: ReturnType<typeof applyUpgrades> | null = null;
 
-export function updateGame(state: GameState, input: InputManager, dt: number, progress?: PlayerProgress): void {
+export function updateGame(state: GameState, input: InputManager, dt: number, progress?: PlayerProgress, canvasW?: number, canvasH?: number): void {
   if (state.paused || state.gameOver) return;
 
   if (progress && !upgradeCache) {
@@ -113,6 +118,27 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   const sub = state.sub;
   const ups = upgradeCache;
 
+  // --- Infinite terrain generation ---
+  if (sub.depth > state.generatedDepth - TERRAIN_CHUNK_SIZE) {
+    state.generatedDepth = extendTerrain(
+      state.terrain,
+      state.generatedDepth,
+      sub.depth + TERRAIN_CHUNK_SIZE * 2,
+      terrainSeed
+    );
+  }
+
+  // --- Mouse-based aiming ---
+  if (canvasW && canvasH) {
+    const screenCenterX = canvasW / 2;
+    const screenCenterY = canvasH / 2;
+    const dx = input.mouseX - screenCenterX;
+    const dy = input.mouseY - screenCenterY;
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+      sub.aimAngle = Math.atan2(dy, dx);
+    }
+  }
+
   // --- Direct WASD movement ---
   let thrusting = false;
   const thrustPower = SUB_THRUST * sub.speed;
@@ -122,7 +148,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   if (input.isDown('a') || input.isDown('ArrowLeft')) { sub.vel.x -= thrustPower; thrusting = true; }
   if (input.isDown('d') || input.isDown('ArrowRight')) { sub.vel.x += thrustPower; thrusting = true; }
 
-  // Rotation to face velocity
+  // Rotation to face velocity (sub body follows movement)
   const speed = Math.sqrt(sub.vel.x ** 2 + sub.vel.y ** 2);
   if (speed > 0.3) {
     const targetRot = Math.atan2(sub.vel.y, sub.vel.x);
@@ -135,11 +161,21 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   // Toggle light
   if (input.wasPressed('f')) sub.lightOn = !sub.lightOn;
 
-  // Weapon switching (Q key or scroll via 1/2/3/4)
+  // Reload ammo (R key)
+  if (input.wasPressed('r')) {
+    const activeWeapon = sub.weapons[sub.activeWeaponIndex];
+    if (activeWeapon && activeWeapon.ammo < activeWeapon.maxAmmo) {
+      activeWeapon.ammo = activeWeapon.maxAmmo;
+      // Reload costs power
+      sub.power = Math.max(0, sub.power - 5);
+    }
+  }
+
+  // Weapon switching
   if (input.wasPressed('q')) {
     sub.activeWeaponIndex = (sub.activeWeaponIndex + 1) % sub.weapons.length;
   }
-  for (let i = 0; i < sub.weapons.length && i < 4; i++) {
+  for (let i = 0; i < sub.weapons.length && i < 8; i++) {
     if (input.wasPressed(String(i + 1))) sub.activeWeaponIndex = i;
   }
 
@@ -158,22 +194,24 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
     sub.engineNoise = Math.min(sub.engineNoise + 0.3, 1);
   }
 
-  // Weapon fire
+  // Weapon fire — uses aimAngle (mouse) for direction, fires on SPACE or left click
   const activeWeapon = sub.weapons[sub.activeWeaponIndex];
-  if (activeWeapon && (input.isDown(' ') || input.wasPressed(' ')) && activeWeapon.ammo > 0 && activeWeapon.cooldown <= 0) {
+  const wantFire = input.isDown(' ') || input.wasPressed(' ') || input.mouseDown || input.mouseJustPressed;
+  if (activeWeapon && wantFire && activeWeapon.ammo > 0 && activeWeapon.cooldown <= 0) {
     activeWeapon.ammo--;
     const fireRateMultiplier = 1 - (ups?.fireRateBonus ?? 0);
     const projSpeedMultiplier = 1 + (ups?.projSpeedBonus ?? 0);
+    const fireAngle = sub.aimAngle;
 
-    const projX = sub.pos.x + Math.cos(sub.rotation) * 35;
-    const projY = sub.pos.y + Math.sin(sub.rotation) * 35;
+    const projX = sub.pos.x + Math.cos(fireAngle) * 35;
+    const projY = sub.pos.y + Math.sin(fireAngle) * 35;
 
     switch (activeWeapon.type) {
       case 'harpoon': {
         activeWeapon.cooldown = Math.floor(HARPOON_COOLDOWN * fireRateMultiplier);
         state.projectiles.push({
           pos: { x: projX, y: projY },
-          vel: { x: Math.cos(sub.rotation) * HARPOON_SPEED * projSpeedMultiplier, y: Math.sin(sub.rotation) * HARPOON_SPEED * projSpeedMultiplier },
+          vel: { x: Math.cos(fireAngle) * HARPOON_SPEED * projSpeedMultiplier, y: Math.sin(fireAngle) * HARPOON_SPEED * projSpeedMultiplier },
           life: HARPOON_RANGE / HARPOON_SPEED,
           damage: sub.harpoonDamage,
           type: 'harpoon',
@@ -182,7 +220,6 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
       }
       case 'shock': {
         activeWeapon.cooldown = Math.floor(45 * fireRateMultiplier);
-        // Shock is AoE - stun all creatures in radius
         const shockRadius = 150;
         for (const c of state.creatures) {
           const cdx = c.pos.x - sub.pos.x;
@@ -195,7 +232,6 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
             c.vel.y += (cdy / (cdist || 1)) * 5;
           }
         }
-        // Electric particles
         for (let i = 0; i < 20; i++) {
           const angle = (Math.PI * 2 * i) / 20;
           state.particles.push({
@@ -210,7 +246,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
         activeWeapon.cooldown = Math.floor(60 * fireRateMultiplier);
         state.projectiles.push({
           pos: { x: projX, y: projY },
-          vel: { x: Math.cos(sub.rotation) * 8 * projSpeedMultiplier, y: Math.sin(sub.rotation) * 8 * projSpeedMultiplier },
+          vel: { x: Math.cos(fireAngle) * 8 * projSpeedMultiplier, y: Math.sin(fireAngle) * 8 * projSpeedMultiplier },
           life: 80,
           damage: 80,
           type: 'torpedo',
@@ -222,10 +258,61 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
         activeWeapon.cooldown = Math.floor(5 * fireRateMultiplier);
         state.projectiles.push({
           pos: { x: projX, y: projY },
-          vel: { x: Math.cos(sub.rotation) * 18 * projSpeedMultiplier, y: Math.sin(sub.rotation) * 18 * projSpeedMultiplier },
+          vel: { x: Math.cos(fireAngle) * 18 * projSpeedMultiplier, y: Math.sin(fireAngle) * 18 * projSpeedMultiplier },
           life: 15,
           damage: 12,
           type: 'plasma',
+        });
+        break;
+      }
+      case 'flak': {
+        activeWeapon.cooldown = Math.floor(30 * fireRateMultiplier);
+        for (let i = -2; i <= 2; i++) {
+          const spread = fireAngle + i * 0.15;
+          state.projectiles.push({
+            pos: { x: projX, y: projY },
+            vel: { x: Math.cos(spread) * 10 * projSpeedMultiplier, y: Math.sin(spread) * 10 * projSpeedMultiplier },
+            life: 25,
+            damage: 10,
+            type: 'flak',
+          });
+        }
+        break;
+      }
+      case 'cryo': {
+        activeWeapon.cooldown = Math.floor(20 * fireRateMultiplier);
+        state.projectiles.push({
+          pos: { x: projX, y: projY },
+          vel: { x: Math.cos(fireAngle) * 14 * projSpeedMultiplier, y: Math.sin(fireAngle) * 14 * projSpeedMultiplier },
+          life: 35,
+          damage: 15,
+          type: 'cryo',
+          special: 'freeze',
+        });
+        break;
+      }
+      case 'railgun': {
+        activeWeapon.cooldown = Math.floor(80 * fireRateMultiplier);
+        state.projectiles.push({
+          pos: { x: projX, y: projY },
+          vel: { x: Math.cos(fireAngle) * 30 * projSpeedMultiplier, y: Math.sin(fireAngle) * 30 * projSpeedMultiplier },
+          life: 40,
+          damage: 120,
+          type: 'railgun',
+          special: 'pierce',
+        });
+        break;
+      }
+      case 'vortex': {
+        activeWeapon.cooldown = Math.floor(120 * fireRateMultiplier);
+        state.projectiles.push({
+          pos: { x: projX, y: projY },
+          vel: { x: Math.cos(fireAngle) * 5, y: Math.sin(fireAngle) * 5 },
+          life: 120,
+          damage: 40,
+          type: 'vortex',
+          radius: 200,
+          special: 'gravity',
         });
         break;
       }
@@ -235,7 +322,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
     for (let i = 0; i < 3; i++) {
       state.particles.push({
         pos: { x: projX, y: projY },
-        vel: { x: Math.cos(sub.rotation) * (4 + Math.random() * 2), y: Math.sin(sub.rotation) * (4 + Math.random() * 2) },
+        vel: { x: Math.cos(fireAngle) * (4 + Math.random() * 2), y: Math.sin(fireAngle) * (4 + Math.random() * 2) },
         life: 12, maxLife: 12, size: 2, color: '#ffaa00', alpha: 1, type: 'debris',
       });
     }
@@ -279,30 +366,29 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   state.currentZone = getZoneAtDepth(sub.depth);
   state.deepestDepth = Math.max(state.deepestDepth, sub.depth);
 
-  // Engine noise (stealth upgrade reduces it)
+  // Engine noise
   const stealthMult = 1 - (ups?.stealthBonus ?? 0);
   sub.engineNoise = thrusting
     ? Math.min(sub.engineNoise + 0.02 * stealthMult, 1)
     : Math.max(sub.engineNoise - 0.01, 0);
   sub.thrust = thrusting ? 1 : 0;
 
-  // Resource drain - FASTER
+  // Resource drain
   sub.power = Math.max(0, sub.power - (sub.lightOn ? 0.008 : 0.003));
   sub.oxygen = Math.max(0, sub.oxygen - 0.006);
 
-  // Hull regen from nano-repair
+  // Hull regen
   if (ups && ups.regenLevel > 0 && sub.hull < sub.maxHull) {
     sub.hull = Math.min(sub.maxHull, sub.hull + 0.003 * ups.regenLevel);
   }
 
-  // Pressure damage (reduced by armor)
+  // Pressure damage
   const zoneConfig = getZoneConfig(sub.depth);
   if (zoneConfig.pressureDamage > 0) {
     const armorReduction = 1 - (ups?.armorLevel ?? 0) * 0.25;
     sub.hull = Math.max(0, sub.hull - zoneConfig.pressureDamage * Math.max(0.1, armorReduction));
   }
 
-  // No power = no light
   if (sub.power <= 0) sub.lightOn = false;
 
   // Game over
@@ -320,12 +406,58 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   state.camera.x += (sub.pos.x - state.camera.x) * 0.08;
   state.camera.y += (sub.pos.y - state.camera.y) * 0.08;
 
+  // --- Chest collection ---
+  for (const feature of state.terrain.features) {
+    if (feature.type === 'chest' && !feature.collected) {
+      const dx = feature.pos.x - sub.pos.x;
+      const dy = feature.pos.y - sub.pos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 40) {
+        feature.collected = true;
+        const value = feature.coinsValue || 10;
+        state.coins += value;
+        state.score += value * 5;
+        // Coin particles
+        for (let i = 0; i < 8; i++) {
+          state.particles.push({
+            pos: { x: feature.pos.x, y: feature.pos.y },
+            vel: { x: (Math.random() - 0.5) * 4, y: -1 - Math.random() * 3 },
+            life: 50, maxLife: 50, size: 3,
+            color: '#ffd700', alpha: 1, type: 'coin',
+          });
+        }
+      }
+    }
+  }
+
   // --- Projectile updates ---
   state.projectiles = state.projectiles.filter(proj => {
     proj.pos.x += proj.vel.x;
     proj.pos.y += proj.vel.y;
     proj.life--;
 
+    // Vortex special: pull enemies
+    if (proj.special === 'gravity' && proj.life > 0) {
+      const vortexRadius = proj.radius || 200;
+      for (const c of state.creatures) {
+        const dx = proj.pos.x - c.pos.x;
+        const dy = proj.pos.y - c.pos.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < vortexRadius && dist > 10) {
+          const pull = 0.3;
+          c.vel.x += (dx / dist) * pull;
+          c.vel.y += (dy / dist) * pull;
+          if (state.time % 10 === 0) {
+            c.health -= 5;
+          }
+        }
+      }
+      // Slow down vortex
+      proj.vel.x *= 0.95;
+      proj.vel.y *= 0.95;
+    }
+
+    let hit = false;
     for (const creature of state.creatures) {
       const dx = creature.pos.x - proj.pos.x;
       const dy = creature.pos.y - proj.pos.y;
@@ -337,13 +469,17 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
         creature.vel.x += proj.vel.x * 0.3;
         creature.vel.y += proj.vel.y * 0.3;
 
-        if (proj.type === 'shock') {
+        // Special effects
+        if (proj.special === 'freeze') {
+          creature.stunTimer = 150; // Long freeze
+          creature.speed *= 0.2; // Slow
+        } else if (proj.type === 'shock') {
           creature.stunTimer = 40;
         } else {
           creature.stunTimer = 15;
         }
 
-        // Torpedo explosion - AoE
+        // Torpedo explosion
         if (proj.type === 'torpedo') {
           const explosionRadius = proj.radius || 100;
           for (const other of state.creatures) {
@@ -358,7 +494,6 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
               other.stunTimer = 20;
             }
           }
-          // Explosion particles
           for (let i = 0; i < 15; i++) {
             const angle = Math.random() * Math.PI * 2;
             state.particles.push({
@@ -376,7 +511,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
             pos: { x: proj.pos.x, y: proj.pos.y },
             vel: { x: (Math.random() - 0.5) * 4, y: (Math.random() - 0.5) * 4 },
             life: 20, maxLife: 20, size: 3,
-            color: proj.type === 'plasma' ? '#e0b0ff' : '#ff4500', alpha: 1, type: 'debris',
+            color: proj.type === 'plasma' ? '#e0b0ff' : proj.type === 'cryo' ? '#88ddff' : '#ff4500', alpha: 1, type: 'debris',
           });
         }
 
@@ -391,7 +526,6 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
           if (creature.isBoss) {
             state.bossesDefeated.push(`${creature.zone}_boss`);
           }
-          // Death particles
           for (let i = 0; i < 12; i++) {
             state.particles.push({
               pos: { x: creature.pos.x, y: creature.pos.y },
@@ -408,9 +542,16 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
           });
         }
 
-        return false;
+        // Railgun pierces through
+        if (proj.special === 'pierce') {
+          continue; // Don't remove projectile
+        }
+        hit = true;
+        break;
       }
     }
+
+    if (hit) return false;
     return proj.life > 0;
   });
 
@@ -421,7 +562,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   for (const creature of state.creatures) {
     updateCreature(creature, sub.pos, dt, sub.engineNoise);
 
-    // Collision with submarine - LETHAL
+    // Collision with submarine
     const dx = creature.pos.x - sub.pos.x;
     const dy = creature.pos.y - sub.pos.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -505,7 +646,8 @@ export function resetBossTracker() {
 }
 
 function updateCreatureSpawning(state: GameState) {
-  if (state.time % 90 === 0) {
+  // Reduced spawn frequency for less mob overload
+  if (state.time % 150 === 0) {
     const newCreatures = spawnCreaturesForDepth(state.sub.depth, state.worldWidth);
     for (const c of newCreatures) {
       c.pos.x += state.sub.pos.x;
@@ -513,8 +655,12 @@ function updateCreatureSpawning(state: GameState) {
       c.patrolCenter = { ...c.pos };
     }
     state.creatures.push(...newCreatures);
-    if (state.creatures.length > 50) {
-      state.creatures = state.creatures.slice(-50);
+    // Cap creatures
+    if (state.creatures.length > 25) {
+      // Keep bosses, remove oldest non-bosses
+      const bosses = state.creatures.filter(c => c.isBoss);
+      const nonBosses = state.creatures.filter(c => !c.isBoss).slice(-20);
+      state.creatures = [...bosses, ...nonBosses];
     }
   }
 
@@ -528,6 +674,24 @@ function updateCreatureSpawning(state: GameState) {
         state.creatures.push(boss);
         bossSpawned.add(bossDepth);
       }
+    }
+  }
+
+  // Additional bosses every 2000m after 8000m in infinite mode
+  const nextBossDepth = Math.floor(state.sub.depth / 2000) * 2000;
+  if (nextBossDepth >= 8000 && !bossSpawned.has(nextBossDepth) && Math.abs(state.sub.depth - nextBossDepth) < 50) {
+    const boss = spawnBoss(nextBossDepth, state.worldWidth);
+    if (boss) {
+      boss.pos.x = state.sub.pos.x + (Math.random() > 0.5 ? 400 : -400);
+      boss.pos.y = nextBossDepth;
+      boss.patrolCenter = { ...boss.pos };
+      // Scale boss health with depth
+      const scaleFactor = 1 + (nextBossDepth - 6000) / 4000;
+      boss.health *= scaleFactor;
+      boss.maxHealth *= scaleFactor;
+      boss.damage *= scaleFactor;
+      state.creatures.push(boss);
+      bossSpawned.add(nextBossDepth);
     }
   }
 }

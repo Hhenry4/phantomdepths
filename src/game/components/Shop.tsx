@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PlayerProgress, Upgrade, WeaponType } from '../types';
+import { PlayerProgress, Upgrade, WeaponType, TIER_COLORS, WeaponTier } from '../types';
 import { UPGRADES, WEAPON_SHOP } from '../constants';
 
 interface ShopProps {
@@ -11,8 +11,16 @@ interface ShopProps {
 
 type ShopTab = 'submarine' | 'weapons' | 'systems' | 'armory';
 
+const TIER_LABELS: Record<WeaponTier, string> = {
+  common: 'COMMON',
+  rare: 'RARE',
+  epic: 'EPIC',
+  legendary: 'LEGENDARY',
+  mythic: 'MYTHIC',
+};
+
 const Shop: React.FC<ShopProps> = ({ progress, onPurchase, onBuyWeapon, onBack }) => {
-  const [tab, setTab] = useState<ShopTab>('submarine');
+  const [tab, setTab] = useState<ShopTab>('armory');
 
   const getUpgradeCost = (upgrade: Upgrade): number => {
     const level = progress.upgrades[upgrade.id] || 0;
@@ -26,45 +34,48 @@ const Shop: React.FC<ShopProps> = ({ progress, onPurchase, onBuyWeapon, onBack }
   const filteredUpgrades = UPGRADES.filter(u => u.category === (tab === 'armory' ? 'weapons' : tab));
 
   const tabs: { id: ShopTab; label: string; color: string }[] = [
+    { id: 'armory', label: 'WEAPONS', color: '#ff4500' },
     { id: 'submarine', label: 'SUBMARINE', color: '#00bfff' },
-    { id: 'weapons', label: 'UPGRADES', color: '#ff8c00' },
-    { id: 'armory', label: 'BUY WEAPONS', color: '#ff4500' },
+    { id: 'weapons', label: 'COMBAT', color: '#ff8c00' },
     { id: 'systems', label: 'SYSTEMS', color: '#00ff88' },
   ];
 
+  // Sort weapons by tier
+  const tierOrder: WeaponTier[] = ['common', 'rare', 'epic', 'legendary', 'mythic'];
+  const sortedWeapons = [...WEAPON_SHOP].sort((a, b) => tierOrder.indexOf(a.tier) - tierOrder.indexOf(b.tier));
+
   return (
-    <div className="w-full h-screen overflow-auto flex flex-col items-center py-8"
-      style={{ background: '#010810', fontFamily: "'IBM Plex Mono', monospace" }}
+    <div className="w-full h-screen overflow-auto flex flex-col items-center py-6"
+      style={{ background: 'linear-gradient(180deg, #010810 0%, #030f1a 100%)', fontFamily: "'IBM Plex Mono', monospace" }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between w-full max-w-3xl mb-6 px-4">
+      <div className="flex items-center justify-between w-full max-w-3xl mb-4 px-4">
         <button
           onClick={onBack}
-          className="text-sm tracking-widest uppercase hover:opacity-80 transition-opacity"
-          style={{ color: '#6a7a84' }}
+          className="text-xs tracking-widest uppercase hover:opacity-80 transition-opacity px-3 py-1.5 border rounded"
+          style={{ color: '#6a7a84', borderColor: '#1a2a3a' }}
         >
           ← BACK
         </button>
-        <h2 className="text-2xl font-bold tracking-wider" style={{ color: '#b4c5cf' }}>
+        <h2 className="text-xl font-bold tracking-wider" style={{ color: '#b4c5cf' }}>
           EQUIPMENT BAY
         </h2>
-        <span className="text-lg font-bold" style={{ color: '#ffd700' }}>◆ {progress.coins}</span>
+        <span className="text-sm font-bold" style={{ color: '#ffd700' }}>◆ {progress.coins}</span>
       </div>
 
-      {/* Level */}
-      <div className="mb-4">
+      <div className="mb-3">
         <span className="text-xs tracking-widest" style={{ color: '#e0b0ff' }}>PILOT LEVEL {progress.level}</span>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-1.5 mb-4">
         {tabs.map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className="px-4 py-2 text-xs tracking-widest uppercase border transition-all"
+            className="px-3 py-1.5 text-xs tracking-widest uppercase border transition-all rounded"
             style={{
-              color: tab === t.id ? t.color : '#6a7a84',
+              color: tab === t.id ? t.color : '#4a5a64',
               borderColor: tab === t.id ? t.color : '#1a2a3a',
               background: tab === t.id ? `${t.color}10` : 'transparent',
             }}
@@ -76,47 +87,63 @@ const Shop: React.FC<ShopProps> = ({ progress, onPurchase, onBuyWeapon, onBack }
 
       {/* Weapon Shop */}
       {tab === 'armory' ? (
-        <div className="grid grid-cols-2 gap-3 w-full max-w-3xl px-4">
-          {WEAPON_SHOP.map(weapon => {
+        <div className="grid grid-cols-2 gap-2.5 w-full max-w-3xl px-4">
+          {sortedWeapons.map(weapon => {
             const owned = progress.weaponsOwned.includes(weapon.type);
             const canAfford = progress.coins >= weapon.cost;
             const isFree = weapon.cost === 0;
+            const tierColor = TIER_COLORS[weapon.tier];
 
             return (
               <div
                 key={weapon.type}
-                className="p-4 border"
+                className="p-3 border rounded-lg relative overflow-hidden"
                 style={{
                   background: 'rgba(16, 20, 24, 0.8)',
-                  borderColor: owned ? '#00ff88' : canAfford ? '#ff4500' : '#1a2a3a',
+                  borderColor: owned ? '#00ff8840' : `${tierColor}40`,
                 }}
               >
-                <div className="flex justify-between items-start mb-2">
-                  <span className="text-sm font-bold" style={{ color: '#b4c5cf' }}>{weapon.name}</span>
-                  {owned && <span className="text-xs" style={{ color: '#00ff88' }}>OWNED</span>}
+                {/* Tier badge */}
+                <div className="absolute top-2 right-2">
+                  <span className="text-xs px-1.5 py-0.5 rounded" style={{ color: tierColor, background: `${tierColor}15`, fontSize: '9px' }}>
+                    {TIER_LABELS[weapon.tier]}
+                  </span>
                 </div>
-                <p className="text-xs mb-2" style={{ color: '#4a5a64' }}>{weapon.description}</p>
-                <div className="flex gap-4 text-xs mb-3" style={{ color: '#6a7a84' }}>
+
+                <div className="flex justify-between items-start mb-1.5">
+                  <span className="text-xs font-bold" style={{ color: tierColor }}>{weapon.name}</span>
+                </div>
+                <p className="text-xs mb-1.5" style={{ color: '#4a5a64', fontSize: '10px' }}>{weapon.description}</p>
+
+                {weapon.special && (
+                  <div className="mb-1.5">
+                    <span className="text-xs px-1.5 py-0.5 rounded" style={{ color: '#e0b0ff', background: '#e0b0ff10', fontSize: '9px' }}>
+                      ⚡ {weapon.special}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex gap-3 text-xs mb-2" style={{ color: '#4a5a64', fontSize: '9px' }}>
                   <span>DMG: {weapon.damage}</span>
                   <span>AMMO: {weapon.ammo}</span>
                   <span>RATE: {weapon.fireRate}</span>
                 </div>
 
                 {owned ? (
-                  <div className="w-full py-2 text-xs tracking-widest uppercase text-center" style={{ color: '#00ff88' }}>
-                    EQUIPPED
+                  <div className="w-full py-1.5 text-xs tracking-widest uppercase text-center rounded" style={{ color: '#00ff88', background: '#00ff8808' }}>
+                    OWNED
                   </div>
                 ) : isFree ? (
-                  <div className="w-full py-2 text-xs tracking-widest uppercase text-center" style={{ color: '#00ff88' }}>
+                  <div className="w-full py-1.5 text-xs tracking-widest uppercase text-center" style={{ color: '#00ff88' }}>
                     DEFAULT
                   </div>
                 ) : (
                   <button
                     onClick={() => canAfford && onBuyWeapon(weapon.type)}
-                    className="w-full py-2 text-xs tracking-widest uppercase border transition-all"
+                    className="w-full py-1.5 text-xs tracking-widest uppercase border transition-all rounded"
                     style={{
-                      color: canAfford ? '#ffd700' : '#3a4a54',
-                      borderColor: canAfford ? '#ffd700' : '#1a2a3a',
+                      color: canAfford ? '#ffd700' : '#2a3a44',
+                      borderColor: canAfford ? '#ffd70040' : '#1a2a3a',
                       cursor: canAfford ? 'pointer' : 'not-allowed',
                       opacity: canAfford ? 1 : 0.5,
                     }}
@@ -129,8 +156,7 @@ const Shop: React.FC<ShopProps> = ({ progress, onPurchase, onBuyWeapon, onBack }
           })}
         </div>
       ) : (
-        /* Upgrade Grid */
-        <div className="grid grid-cols-2 gap-3 w-full max-w-3xl px-4">
+        <div className="grid grid-cols-2 gap-2.5 w-full max-w-3xl px-4">
           {(tab === 'weapons' ? UPGRADES.filter(u => u.category === 'weapons') : filteredUpgrades).map(upgrade => {
             const level = getUpgradeLevel(upgrade);
             const cost = getUpgradeCost(upgrade);
@@ -140,25 +166,25 @@ const Shop: React.FC<ShopProps> = ({ progress, onPurchase, onBuyWeapon, onBack }
             return (
               <div
                 key={upgrade.id}
-                className="p-4 border"
+                className="p-3 border rounded-lg"
                 style={{
                   background: 'rgba(16, 20, 24, 0.8)',
-                  borderColor: maxed ? '#00ff88' : canAfford ? '#00bfff' : '#1a2a3a',
+                  borderColor: maxed ? '#00ff8830' : canAfford ? '#00bfff30' : '#1a2a3a',
                 }}
               >
-                <div className="flex justify-between items-start mb-2">
-                  <span className="text-sm font-bold" style={{ color: '#b4c5cf' }}>{upgrade.name}</span>
-                  <span className="text-xs" style={{ color: maxed ? '#00ff88' : '#6a7a84' }}>
-                    LV {level}/{upgrade.maxLevel}
+                <div className="flex justify-between items-start mb-1.5">
+                  <span className="text-xs font-bold" style={{ color: '#b4c5cf' }}>{upgrade.name}</span>
+                  <span className="text-xs" style={{ color: maxed ? '#00ff88' : '#4a5a64', fontSize: '10px' }}>
+                    {level}/{upgrade.maxLevel}
                   </span>
                 </div>
-                <p className="text-xs mb-3" style={{ color: '#4a5a64' }}>{upgrade.description}</p>
+                <p className="text-xs mb-2" style={{ color: '#4a5a64', fontSize: '10px' }}>{upgrade.description}</p>
 
-                <div className="flex gap-1 mb-3">
+                <div className="flex gap-0.5 mb-2">
                   {Array.from({ length: upgrade.maxLevel }).map((_, i) => (
                     <div
                       key={i}
-                      className="h-1.5 flex-1"
+                      className="h-1 flex-1 rounded-full"
                       style={{ background: i < level ? '#00bfff' : '#1a2a3a' }}
                     />
                   ))}
@@ -167,10 +193,10 @@ const Shop: React.FC<ShopProps> = ({ progress, onPurchase, onBuyWeapon, onBack }
                 {!maxed ? (
                   <button
                     onClick={() => canAfford && onPurchase(upgrade.id)}
-                    className="w-full py-2 text-xs tracking-widest uppercase border transition-all"
+                    className="w-full py-1.5 text-xs tracking-widest uppercase border transition-all rounded"
                     style={{
-                      color: canAfford ? '#ffd700' : '#3a4a54',
-                      borderColor: canAfford ? '#ffd700' : '#1a2a3a',
+                      color: canAfford ? '#ffd700' : '#2a3a44',
+                      borderColor: canAfford ? '#ffd70040' : '#1a2a3a',
                       cursor: canAfford ? 'pointer' : 'not-allowed',
                       opacity: canAfford ? 1 : 0.5,
                     }}
@@ -178,7 +204,7 @@ const Shop: React.FC<ShopProps> = ({ progress, onPurchase, onBuyWeapon, onBack }
                     UPGRADE — ◆ {cost}
                   </button>
                 ) : (
-                  <div className="w-full py-2 text-xs tracking-widest uppercase text-center" style={{ color: '#00ff88' }}>
+                  <div className="w-full py-1.5 text-xs tracking-widest uppercase text-center rounded" style={{ color: '#00ff88', background: '#00ff8808' }}>
                     MAXED
                   </div>
                 )}
