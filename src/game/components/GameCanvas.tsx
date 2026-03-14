@@ -188,9 +188,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
       inputRef.current.clearFrame();
     }
 
-    // Send multiplayer update
-    if (multiplayerRoomId && user && state.time % 5 === 0) {
+    // Send multiplayer update every 2 frames for smoother sync
+    if (multiplayerRoomId && user && state.time % 2 === 0) {
       updatePlayerData(multiplayerRoomId, user.uid, {
+        name: user.displayName || user.email?.split('@')[0] || 'Pilot',
         odometry: { x: state.sub.pos.x, y: state.sub.pos.y, rotation: state.sub.rotation },
         depth: Math.floor(state.sub.depth),
         hull: Math.floor(state.sub.hull),
