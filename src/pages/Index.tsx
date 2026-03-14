@@ -20,6 +20,7 @@ function defaultProgress(): PlayerProgress {
     xp: 0,
     level: 1,
     weaponsOwned: ['harpoon'],
+    runCheckpoint: undefined,
   };
 }
 
