@@ -7,7 +7,7 @@ export interface SubmarineState {
   pos: Vec2;
   vel: Vec2;
   rotation: number;
-  aimAngle: number; // Independent aim angle from mouse
+  aimAngle: number;
   thrust: number;
   hull: number;
   maxHull: number;
@@ -24,6 +24,11 @@ export interface SubmarineState {
   sonarActive: boolean;
   speed: number;
   harpoonDamage: number;
+  heat: number;
+  maxHeat: number;
+  heatWarning: boolean;
+  systemGlitch: boolean;
+  glitchTimer: number;
 }
 
 export interface WeaponSlot {
@@ -60,10 +65,14 @@ export interface Creature {
   attackCooldown: number;
   chargeTimer: number;
   chargeTarget: Vec2 | null;
+  // Volcanic boss abilities
+  abilityTimer?: number;
+  activeAbility?: string;
+  submerged?: boolean;
 }
 
-export type CreatureType = 'angler' | 'squid' | 'serpent' | 'jellyfish' | 'fish' | 'leviathan' | 'eel' | 'phantom';
-export type DepthZone = 'sunlight' | 'twilight' | 'midnight' | 'abyssal' | 'hadal';
+export type CreatureType = 'angler' | 'squid' | 'serpent' | 'jellyfish' | 'fish' | 'leviathan' | 'eel' | 'phantom' | 'lava_eel' | 'vent_crab' | 'magma_ray' | 'infernal_leviathan';
+export type DepthZone = 'sunlight' | 'twilight' | 'midnight' | 'abyssal' | 'hadal' | 'volcanic';
 
 export interface TerrainSegment {
   points: Vec2[];
@@ -72,11 +81,17 @@ export interface TerrainSegment {
 
 export interface TerrainFeature {
   pos: Vec2;
-  type: 'cave' | 'ruin' | 'wreck' | 'kelp' | 'rock_formation' | 'chest';
+  type: 'cave' | 'ruin' | 'wreck' | 'kelp' | 'rock_formation' | 'chest' | 'coral' | 'npc' | 'portal' | 'vent' | 'fissure' | 'basalt_pillar' | 'ash_cloud';
   size: number;
   color: string;
   collected?: boolean;
   coinsValue?: number;
+  npcName?: string;
+  npcDialogue?: string;
+  questId?: string;
+  active?: boolean; // For vents pulsing
+  pulseTimer?: number;
+  eruptTimer?: number;
 }
 
 export interface Particle {
@@ -87,7 +102,7 @@ export interface Particle {
   size: number;
   color: string;
   alpha: number;
-  type: 'bubble' | 'biolum' | 'debris' | 'sonar' | 'coin' | 'electric' | 'explosion';
+  type: 'bubble' | 'biolum' | 'debris' | 'sonar' | 'coin' | 'electric' | 'explosion' | 'ash' | 'magma' | 'steam' | 'heat_wave';
 }
 
 export interface SonarPing {
@@ -119,7 +134,12 @@ export interface GameState {
   killCount: Record<string, number>;
   bossesDefeated: string[];
   projectiles: Projectile[];
-  generatedDepth: number; // How deep terrain has been generated
+  generatedDepth: number;
+  // Volcanic Abyss
+  currentMap: 'ocean' | 'volcanic';
+  portalActive: boolean;
+  portalPos: Vec2 | null;
+  volcanicDepthOffset: number;
 }
 
 export interface Projectile {
@@ -129,7 +149,7 @@ export interface Projectile {
   damage: number;
   type: WeaponType;
   radius?: number;
-  special?: string; // Special ability tag
+  special?: string;
 }
 
 export interface ZoneConfig {
@@ -160,6 +180,8 @@ export interface RunCheckpoint {
   killCount: Record<string, number>;
   bossesDefeated: string[];
   savedAt: number;
+  currentMap?: 'ocean' | 'volcanic';
+  heat?: number;
 }
 
 export interface PlayerProgress {

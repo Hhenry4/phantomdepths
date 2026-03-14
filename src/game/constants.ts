@@ -35,6 +35,10 @@ export const XP_PER_KILL: Record<string, number> = {
   serpent: 60,
   leviathan: 150,
   phantom: 300,
+  lava_eel: 35,
+  vent_crab: 30,
+  magma_ray: 80,
+  infernal_leviathan: 500,
 };
 
 export const DEPTH_ZONES: ZoneConfig[] = [
@@ -63,10 +67,16 @@ export const DEPTH_ZONES: ZoneConfig[] = [
     pressureDamage: 0.06, terrainDensity: 0.8,
   },
   {
-    name: 'Hadal Trench', zone: 'hadal', minDepth: 6000, maxDepth: Number.MAX_SAFE_INTEGER,
+    name: 'Hadal Trench', zone: 'hadal', minDepth: 6000, maxDepth: 10000,
     waterColor: '#000408', visibility: 0.15, ambientLight: 0,
     creatureTypes: ['leviathan', 'serpent', 'phantom'], creatureDensity: 0.24,
     pressureDamage: 0.12, terrainDensity: 0.9,
+  },
+  {
+    name: 'Volcanic Abyss', zone: 'volcanic', minDepth: 0, maxDepth: Number.MAX_SAFE_INTEGER,
+    waterColor: '#1a0800', visibility: 0.4, ambientLight: 0.08,
+    creatureTypes: ['lava_eel', 'vent_crab', 'magma_ray'], creatureDensity: 0.35,
+    pressureDamage: 0.04, terrainDensity: 0.85,
   },
 ];
 
@@ -82,6 +92,11 @@ export const CREATURE_CONFIGS: Record<string, {
   serpent: { health: 200, speed: 2.5, size: 60, detectionRadius: 450, color: '#1a472a', glowColor: '#00ff88', damage: 25 },
   leviathan: { health: 600, speed: 2, size: 120, detectionRadius: 600, color: '#2d1b4e', glowColor: '#7b2fff', damage: 40 },
   phantom: { health: 1000, speed: 2.8, size: 100, detectionRadius: 700, color: '#1a0a2e', glowColor: '#e0b0ff', damage: 50 },
+  // Volcanic creatures
+  lava_eel: { health: 80, speed: 4, size: 24, detectionRadius: 200, color: '#cc3300', glowColor: '#ff6600', damage: 18 },
+  vent_crab: { health: 60, speed: 1.5, size: 16, detectionRadius: 120, color: '#8b4513', glowColor: '#ff4500', damage: 12 },
+  magma_ray: { health: 250, speed: 2.2, size: 55, detectionRadius: 400, color: '#8b0000', glowColor: '#ff3300', damage: 30 },
+  infernal_leviathan: { health: 2000, speed: 2.5, size: 150, detectionRadius: 800, color: '#1a0a00', glowColor: '#ff4400', damage: 60 },
 };
 
 export const UPGRADES: Upgrade[] = [
@@ -101,6 +116,7 @@ export const UPGRADES: Upgrade[] = [
   { id: 'sonar', name: 'Sonar Amplifier', description: '+25% sonar range, -15% cooldown', maxLevel: 5, baseCost: 250, costMultiplier: 2.3, category: 'systems' },
   { id: 'regen', name: 'Nano-Repair Bots', description: 'Slowly regenerate hull over time', maxLevel: 3, baseCost: 800, costMultiplier: 3.0, category: 'systems' },
   { id: 'light', name: 'Deep Beam Upgrade', description: '+30% light radius', maxLevel: 4, baseCost: 200, costMultiplier: 2.2, category: 'systems' },
+  { id: 'heatshield', name: 'Thermal Shielding', description: '-20% heat buildup in volcanic zones', maxLevel: 4, baseCost: 500, costMultiplier: 2.5, category: 'submarine' },
 ];
 
 export const WEAPON_SHOP: WeaponShopItem[] = [
@@ -135,7 +151,6 @@ export const WEAPON_SHOP: WeaponShopItem[] = [
   // ═══ MYTHIC (5) ═══
   { type: 'vortex', name: 'Void Vortex', description: 'Creates a black hole that pulls and damages all nearby enemies.', cost: 15000, damage: 40, ammo: 3, fireRate: 120, tier: 'mythic', special: 'Gravity Well' },
   { type: 'rift', name: 'Rift Tear', description: 'Tears a rift in space that damages everything crossing it for 15s.', cost: 20000, damage: 50, ammo: 2, fireRate: 150, tier: 'mythic', special: 'Dimensional Rift' },
-  // Additional mythic placeholder types reuse existing weapon mechanics
   { type: 'harpoon' as any, name: 'Poseidon Trident', description: 'Triple harpoon burst that seeks enemies. The ultimate classic.', cost: 25000, damage: 60, ammo: 15, fireRate: 12, tier: 'mythic', special: 'Triple Homing' },
   { type: 'torpedo' as any, name: 'Kraken\'s Wrath', description: 'Nuclear torpedo with screen-wide detonation.', cost: 30000, damage: 300, ammo: 1, fireRate: 200, tier: 'mythic', special: 'Nuclear Blast' },
   { type: 'plasma' as any, name: 'Star Forge Beam', description: 'Continuous beam of stellar energy. Infinite range.', cost: 50000, damage: 25, ammo: 100, fireRate: 3, tier: 'mythic', special: 'Infinite Beam' },
@@ -163,6 +178,7 @@ export const QUESTS: Quest[] = [
   { id: 'q_boss_midnight', name: 'Midnight Terror', description: 'Defeat the Midnight Boss', type: 'boss', target: 1, reward: 800, xpReward: 400, zone: 'midnight' },
   { id: 'q_boss_abyssal', name: 'Abyssal Conqueror', description: 'Defeat the Abyssal Boss', type: 'boss', target: 1, reward: 1500, xpReward: 600, zone: 'abyssal' },
   { id: 'q_boss_hadal', name: 'Hadal Nemesis', description: 'Defeat the Hadal Boss', type: 'boss', target: 1, reward: 3000, xpReward: 1000, zone: 'hadal' },
+  { id: 'q_boss_volcanic', name: 'Infernal Conqueror', description: 'Defeat the Infernal Leviathan', type: 'boss', target: 1, reward: 5000, xpReward: 2000, zone: 'volcanic' },
   { id: 'q_survive_500', name: 'Deep Survivor', description: 'Survive below 500m for 60 seconds', type: 'survive', target: 60, reward: 120, xpReward: 60 },
   { id: 'q_survive_2000', name: 'Pressure Veteran', description: 'Survive below 2000m for 90 seconds', type: 'survive', target: 90, reward: 400, xpReward: 200 },
   { id: 'q_level_5', name: 'Experienced Pilot', description: 'Reach Level 5', type: 'level', target: 5, reward: 300, xpReward: 0 },
@@ -173,8 +189,19 @@ export const QUESTS: Quest[] = [
 ];
 
 export const BOSS_SPAWN_DEPTHS = [190, 990, 3950, 5950];
+export const VOLCANIC_BOSS_DEPTH = 3000; // Infernal Leviathan spawns at 3000m in volcanic map
 
 export const COIN_VALUES: Record<string, number> = {
   fish: 3, jellyfish: 5, angler: 12, eel: 15,
   squid: 25, serpent: 40, leviathan: 100, phantom: 200,
+  lava_eel: 20, vent_crab: 15, magma_ray: 50, infernal_leviathan: 500,
 };
+
+// NPC configs for quest givers scattered in the world
+export const NPC_CONFIGS = [
+  { name: 'Old Mariner', dialogue: 'The twilight zone holds many secrets...', depth: 150, questId: 'q_depth_200' },
+  { name: 'Dr. Coral', dialogue: 'I need coral specimens from the deep.', depth: 400, questId: 'q_depth_500' },
+  { name: 'Navigator Rex', dialogue: 'Few have ventured past 1000m...', depth: 800, questId: 'q_depth_1000' },
+  { name: 'The Hermit', dialogue: 'Something ancient stirs below...', depth: 1800, questId: 'q_depth_2000' },
+  { name: 'Ghost Diver', dialogue: 'I lost my crew to the Leviathan...', depth: 3500, questId: 'q_kill_leviathan_1' },
+];
