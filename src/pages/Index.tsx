@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GameScreen, PlayerProgress, RunCheckpoint, WeaponType, getLevelFromXp } from '../game/types';
 import { QUESTS, UPGRADES, WEAPON_SHOP } from '../game/constants';
 import GameCanvas from '../game/components/GameCanvas';
