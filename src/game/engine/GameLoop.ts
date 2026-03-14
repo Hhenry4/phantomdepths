@@ -648,20 +648,23 @@ export function resetBossTracker() {
 }
 
 function updateCreatureSpawning(state: GameState) {
-  // Reduced spawn frequency for less mob overload
-  if (state.time % 150 === 0) {
-    const newCreatures = spawnCreaturesForDepth(state.sub.depth, state.worldWidth);
+  // Denser spawn cadence with depth scaling
+  if (state.time % 95 === 0) {
+    const densityMultiplier = 1 + Math.min(1.2, state.sub.depth / 6000);
+    const newCreatures = spawnCreaturesForDepth(state.sub.depth, state.worldWidth * densityMultiplier);
+
     for (const c of newCreatures) {
-      c.pos.x += state.sub.pos.x;
-      c.pos.y = state.sub.pos.y + (Math.random() - 0.5) * 800;
+      c.pos.x += state.sub.pos.x + (Math.random() - 0.5) * 1200;
+      c.pos.y = state.sub.pos.y + (Math.random() - 0.5) * 1000;
       c.patrolCenter = { ...c.pos };
     }
+
     state.creatures.push(...newCreatures);
-    // Cap creatures
-    if (state.creatures.length > 25) {
-      // Keep bosses, remove oldest non-bosses
+
+    const maxCreatures = 42;
+    if (state.creatures.length > maxCreatures) {
       const bosses = state.creatures.filter(c => c.isBoss);
-      const nonBosses = state.creatures.filter(c => !c.isBoss).slice(-20);
+      const nonBosses = state.creatures.filter(c => !c.isBoss).slice(-(maxCreatures - bosses.length));
       state.creatures = [...bosses, ...nonBosses];
     }
   }
