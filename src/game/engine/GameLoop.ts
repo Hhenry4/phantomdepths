@@ -593,7 +593,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   // Remove dead/distant
   state.creatures = state.creatures.filter(c => {
     const dist = Math.sqrt((c.pos.x - sub.pos.x) ** 2 + (c.pos.y - sub.pos.y) ** 2);
-    return c.health > 0 && dist < 2500;
+    return c.health > 0 && dist < 3400;
   });
 
   // Sonar pings
