@@ -697,28 +697,33 @@ function drawMinimap(ctx: CanvasRenderingContext2D, state: GameState, canvasW: n
     }
   }
 
-  const scale = mapW / (state.worldWidth * 1.5);
   const centerX = mapX + mapW / 2;
+  const localRangeX = 2400;
+  const toMapX = (worldX: number) => {
+    const relative = (worldX - state.sub.pos.x + localRangeX) / (localRangeX * 2);
+    return mapX + relative * mapW;
+  };
 
-  // Terrain
+  // Terrain (local horizontal window around current submarine position)
   ctx.strokeStyle = '#2a3a4a';
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let i = 0; i < state.terrain.left.length; i += 10) {
     const p = state.terrain.left[i];
-    const mx = centerX + p.x * scale;
+    const mx = toMapX(p.x);
     const my = mapY + (p.y / viewRange) * mapH;
-    if (my > mapY && my < mapY + mapH) {
+    if (mx > mapX && mx < mapX + mapW && my > mapY && my < mapY + mapH) {
       if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
     }
   }
   ctx.stroke();
+
   ctx.beginPath();
   for (let i = 0; i < state.terrain.right.length; i += 10) {
     const p = state.terrain.right[i];
-    const mx = centerX + p.x * scale;
+    const mx = toMapX(p.x);
     const my = mapY + (p.y / viewRange) * mapH;
-    if (my > mapY && my < mapY + mapH) {
+    if (mx > mapX && mx < mapX + mapW && my > mapY && my < mapY + mapH) {
       if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
     }
   }
@@ -726,7 +731,7 @@ function drawMinimap(ctx: CanvasRenderingContext2D, state: GameState, canvasW: n
 
   // Creatures
   for (const c of state.creatures) {
-    const cx = centerX + c.pos.x * scale;
+    const cx = toMapX(c.pos.x);
     const cy = mapY + (c.pos.y / viewRange) * mapH;
     if (cx > mapX && cx < mapX + mapW && cy > mapY && cy < mapY + mapH) {
       ctx.fillStyle = c.isBoss ? '#ff4500' : c.glowColor;
@@ -740,18 +745,20 @@ function drawMinimap(ctx: CanvasRenderingContext2D, state: GameState, canvasW: n
   if (otherPlayers) {
     for (const [, player] of Object.entries(otherPlayers)) {
       if (player.alive) {
-        const px = centerX + player.odometry.x * scale;
+        const px = toMapX(player.odometry.x);
         const py = mapY + (player.depth / viewRange) * mapH;
-        ctx.fillStyle = '#00ff88';
-        ctx.beginPath();
-        ctx.arc(px, py, 2.5, 0, Math.PI * 2);
-        ctx.fill();
+        if (px > mapX && px < mapX + mapW && py > mapY && py < mapY + mapH) {
+          ctx.fillStyle = '#00ff88';
+          ctx.beginPath();
+          ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
   }
 
   // Sub position
-  const subX = centerX + state.sub.pos.x * scale;
+  const subX = centerX;
   const subY = mapY + (state.sub.pos.y / viewRange) * mapH;
   ctx.fillStyle = '#00bfff';
   ctx.beginPath();
