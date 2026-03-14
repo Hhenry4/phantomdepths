@@ -135,6 +135,7 @@ const HUD: React.FC<HUDProps> = ({
             {ammo}/{maxAmmo}
           </span>
           <span className="text-xs" style={{ color: '#3a4a54', fontSize: '7px' }}>[R] RELOAD</span>
+          <span className="text-xs" style={{ color: '#3a4a54', fontSize: '7px' }}>AIM = SUB FACING</span>
           {weaponCount > 1 && (
             <span className="text-xs" style={{ color: '#3a4a54', fontSize: '7px' }}>[Q] SWITCH</span>
           )}
