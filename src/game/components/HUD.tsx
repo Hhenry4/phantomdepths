@@ -145,7 +145,7 @@ const HUD: React.FC<HUDProps> = ({
       <div className="absolute right-0 bottom-12 px-2 py-1" style={{ opacity: 0.4 }}>
         <div className="flex flex-col gap-0.5 text-right" style={{ color: '#3a4a54', fontSize: '7px' }}>
           <span>WASD MOVE</span>
-          <span>MOUSE AIM</span>
+          <span>FACE TO AIM</span>
           <span>CLICK/SPACE FIRE</span>
           <span>ESC PAUSE</span>
         </div>
