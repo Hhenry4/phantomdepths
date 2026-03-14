@@ -151,9 +151,9 @@ export const WEAPON_SHOP: WeaponShopItem[] = [
   // ═══ MYTHIC (5) ═══
   { type: 'vortex', name: 'Void Vortex', description: 'Creates a black hole that pulls and damages all nearby enemies.', cost: 15000, damage: 40, ammo: 3, fireRate: 120, tier: 'mythic', special: 'Gravity Well' },
   { type: 'rift', name: 'Rift Tear', description: 'Tears a rift in space that damages everything crossing it for 15s.', cost: 20000, damage: 50, ammo: 2, fireRate: 150, tier: 'mythic', special: 'Dimensional Rift' },
-  { type: 'harpoon' as any, name: 'Poseidon Trident', description: 'Triple harpoon burst that seeks enemies. The ultimate classic.', cost: 25000, damage: 60, ammo: 15, fireRate: 12, tier: 'mythic', special: 'Triple Homing' },
-  { type: 'torpedo' as any, name: 'Kraken\'s Wrath', description: 'Nuclear torpedo with screen-wide detonation.', cost: 30000, damage: 300, ammo: 1, fireRate: 200, tier: 'mythic', special: 'Nuclear Blast' },
-  { type: 'plasma' as any, name: 'Star Forge Beam', description: 'Continuous beam of stellar energy. Infinite range.', cost: 50000, damage: 25, ammo: 100, fireRate: 3, tier: 'mythic', special: 'Infinite Beam' },
+  { type: 'trident', name: 'Poseidon Trident', description: 'Triple harpoon burst that seeks enemies. The ultimate classic.', cost: 25000, damage: 60, ammo: 15, fireRate: 12, tier: 'mythic', special: 'Triple Homing' },
+  { type: 'kraken', name: 'Kraken\'s Wrath', description: 'Nuclear torpedo with screen-wide detonation.', cost: 30000, damage: 300, ammo: 1, fireRate: 200, tier: 'mythic', special: 'Nuclear Blast' },
+  { type: 'starforge', name: 'Star Forge Beam', description: 'Continuous beam of stellar energy. Infinite range.', cost: 50000, damage: 25, ammo: 100, fireRate: 3, tier: 'mythic', special: 'Infinite Beam' },
 ];
 
 export const QUESTS: Quest[] = [

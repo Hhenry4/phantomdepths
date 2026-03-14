@@ -735,9 +735,18 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   if (state.particles.length < MAX_PARTICLES && Math.random() < 0.3) spawnBubble(state);
   if (state.particles.length < MAX_PARTICLES && sub.depth > 200 && Math.random() < 0.1) spawnBiolum(state);
 
+  // Cull distant terrain features to save memory
+  if (state.time % 300 === 0) {
+    state.terrain.features = state.terrain.features.filter(f => {
+      if (f.type === 'portal') return true;
+      const dy = Math.abs(f.pos.y - sub.pos.y);
+      return dy < TERRAIN_CHUNK_SIZE * 2;
+    });
+  }
+
   // Volcanic ambient particles
   if (isVolcanic) {
-    if (Math.random() < 0.2) {
+    if (state.particles.length < MAX_PARTICLES && Math.random() < 0.2) {
       state.particles.push({
         pos: { x: sub.pos.x + (Math.random() - 0.5) * 600, y: sub.pos.y + (Math.random() - 0.5) * 400 },
         vel: { x: (Math.random() - 0.5) * 0.3, y: -0.5 - Math.random() * 0.5 },
