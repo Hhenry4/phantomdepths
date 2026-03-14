@@ -50,6 +50,27 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
     prevCoinsRef.current = 0;
   }, [progress]);
 
+  const buildCheckpoint = useCallback((state: GameState): RunCheckpoint => ({
+    position: { ...state.sub.pos },
+    velocity: { ...state.sub.vel },
+    rotation: state.sub.rotation,
+    aimAngle: state.sub.aimAngle,
+    depth: state.sub.depth,
+    hull: state.sub.hull,
+    power: state.sub.power,
+    oxygen: state.sub.oxygen,
+    coins: state.coins,
+    xpEarned: state.xpEarned,
+    killCount: { ...state.killCount },
+    bossesDefeated: [...state.bossesDefeated],
+    savedAt: Date.now(),
+  }), []);
+
+  const saveCheckpoint = useCallback((state: GameState) => {
+    if (!user || !onCheckpointSave) return;
+    onCheckpointSave(buildCheckpoint(state));
+  }, [buildCheckpoint, onCheckpointSave, user]);
+
   useEffect(() => { initGame(); }, [initGame]);
 
   // Multiplayer subscription
