@@ -140,6 +140,17 @@ const Index: React.FC = () => {
     });
   }, [persistProgress]);
 
+  const handleCheckpointSave = useCallback((checkpoint: RunCheckpoint) => {
+    setProgress((prev) => {
+      const next = {
+        ...prev,
+        runCheckpoint: checkpoint,
+      };
+      persistProgress(next);
+      return next;
+    });
+  }, [persistProgress]);
+
   const handleTutorialDone = useCallback(() => {
     setShowTutorial(false);
   }, []);
