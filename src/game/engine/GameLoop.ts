@@ -138,16 +138,8 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
     );
   }
 
-  // --- Mouse-based aiming ---
-  if (canvasW && canvasH) {
-    const screenCenterX = canvasW / 2;
-    const screenCenterY = canvasH / 2;
-    const dx = input.mouseX - screenCenterX;
-    const dy = input.mouseY - screenCenterY;
-    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-      sub.aimAngle = Math.atan2(dy, dx);
-    }
-  }
+  // Aiming always follows submarine facing direction
+  // (facing is resolved from current movement/rotation below).
 
   // --- Direct WASD movement ---
   let thrusting = false;
