@@ -31,7 +31,14 @@ const Shop: React.FC<ShopProps> = ({ progress, onPurchase, onBuyWeapon, onBack }
     return progress.upgrades[upgrade.id] || 0;
   };
 
-  const filteredUpgrades = UPGRADES.filter(u => u.category === (tab === 'armory' ? 'weapons' : tab));
+  // Map tab to upgrade category — 'armory' shows weapon shop, 'combat' shows weapon upgrades
+  const upgradeCategoryMap: Record<ShopTab, string> = {
+    armory: '', // weapon shop items, not upgrades
+    submarine: 'submarine',
+    weapons: 'weapons',
+    systems: 'systems',
+  };
+  const filteredUpgrades = UPGRADES.filter(u => u.category === upgradeCategoryMap[tab]);
 
   const tabs: { id: ShopTab; label: string; color: string }[] = [
     { id: 'armory', label: 'WEAPONS', color: '#ff4500' },

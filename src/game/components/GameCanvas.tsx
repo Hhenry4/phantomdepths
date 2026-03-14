@@ -224,15 +224,23 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
   const handleRestart = useCallback(() => {
     const state = stateRef.current;
     if (state) endGame(state);
+    // Clear checkpoint on restart/death by saving progress without checkpoint
+    if (user && onCheckpointSave) {
+      onCheckpointSave(null as any); // Signal to clear checkpoint
+    }
     initGame();
-  }, [initGame, endGame]);
+  }, [initGame, endGame, user, onCheckpointSave]);
 
   const handleReturnToBase = useCallback(() => {
     stopEngine();
     const state = stateRef.current;
+    // Save checkpoint before ending so resume dive works
+    if (state && !state.gameOver) {
+      saveCheckpoint(state);
+    }
     if (state) endGame(state);
     onReturnToBase();
-  }, [endGame, onReturnToBase]);
+  }, [endGame, onReturnToBase, saveCheckpoint]);
 
   useEffect(() => {
     inputRef.current = new InputManager();

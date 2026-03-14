@@ -71,7 +71,8 @@ const Index: React.FC = () => {
         totalKills: prev.totalKills + kills,
         xp: prev.xp + xpEarned,
         level: getLevelFromXp(prev.xp + xpEarned),
-        runCheckpoint: undefined,
+        // Keep checkpoint if returning to base; clear only on game over (death)
+        runCheckpoint: prev.runCheckpoint,
       };
 
       // Quest checks
@@ -145,13 +146,16 @@ const Index: React.FC = () => {
     });
   }, [persistProgress]);
 
-  const handleCheckpointSave = useCallback((checkpoint: RunCheckpoint) => {
+  const handleCheckpointSave = useCallback((checkpoint: RunCheckpoint | null) => {
     if (!user) return;
 
     const next: PlayerProgress = {
       ...progressRef.current,
-      runCheckpoint: checkpoint,
+      runCheckpoint: checkpoint ?? undefined,
     };
+
+    // Also update local state so HomeScreen sees the checkpoint
+    setProgress(next);
 
     saveProgressToCloud(user.uid, next).catch((err) => {
       console.error('Checkpoint persist failed:', err);
