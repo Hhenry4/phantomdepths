@@ -199,7 +199,7 @@ const HUD: React.FC<HUDProps> = ({
           <h1 className="text-xl font-bold" style={{ color: '#b4c5cf' }}>
             SYSTEMS PAUSED
           </h1>
-          <p className="text-xs mt-1 mb-1" style={{ color: '#00ff88' }}>PROGRESS SAVED</p>
+          <p className="text-xs mt-1 mb-1" style={{ color: '#00ff88' }}>CHECKPOINT SAVED TO CLOUD</p>
           <p className="text-xs mb-4" style={{ color: '#4a5a64' }}>
             ESC TO RESUME
           </p>
