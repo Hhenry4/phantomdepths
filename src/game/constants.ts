@@ -11,8 +11,8 @@ export const SUB_ROTATION_SPEED = 0.04;
 export const SUB_DRAG = 0.96;
 export const SUB_GRAVITY = 0.008;
 
-export const WORLD_WIDTH = 3000;
-export const MAX_DEPTH = 99999; // Infinite - terrain generates as you go
+export const WORLD_WIDTH = 4200;
+export const MAX_DEPTH = Number.MAX_SAFE_INTEGER; // Practically infinite
 
 export const LIGHT_RADIUS_BASE = 250;
 export const SONAR_MAX_RADIUS = 600;
