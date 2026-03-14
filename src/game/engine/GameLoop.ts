@@ -4,17 +4,18 @@ import {
   SONAR_COOLDOWN, SONAR_MAX_RADIUS, WORLD_WIDTH,
   HARPOON_SPEED, HARPOON_RANGE, HARPOON_COOLDOWN, HARPOON_HIT_RADIUS,
   HARPOON_BASE_DAMAGE, BOSS_SPAWN_DEPTHS, COIN_VALUES, XP_PER_KILL,
-  WEAPON_SHOP, TERRAIN_CHUNK_SIZE,
+  WEAPON_SHOP, TERRAIN_CHUNK_SIZE, VOLCANIC_BOSS_DEPTH,
 } from '../constants';
 import { InputManager } from './Input';
-import { generateTerrain, extendTerrain, getZoneAtDepth, getZoneConfig } from './Terrain';
-import { spawnCreaturesForDepth, spawnBoss, updateCreature } from './Creatures';
+import { generateTerrain, extendTerrain, getZoneAtDepth, getZoneConfig, generateVolcanicTerrain, extendVolcanicTerrain } from './Terrain';
+import { spawnCreaturesForDepth, spawnBoss, updateCreature, spawnVolcanicCreatures, spawnVolcanicBoss } from './Creatures';
 
 export function applyUpgrades(progress: PlayerProgress): {
   maxHull: number; maxOxygen: number; maxPower: number;
   speed: number; harpoonDamage: number; maxAmmo: number;
   armorLevel: number; sonarLevel: number; fireRateBonus: number;
   projSpeedBonus: number; stealthBonus: number; regenLevel: number; lightLevel: number;
+  heatShieldLevel: number;
 } {
   const u = progress.upgrades;
   return {
@@ -31,6 +32,7 @@ export function applyUpgrades(progress: PlayerProgress): {
     stealthBonus: (u.stealth || 0) * 0.2,
     regenLevel: u.regen || 0,
     lightLevel: u.light || 0,
+    heatShieldLevel: u.heatshield || 0,
   };
 }
 
@@ -40,15 +42,19 @@ export function createInitialState(progress?: PlayerProgress): GameState {
   terrainSeed = Date.now();
 
   const checkpoint = progress?.runCheckpoint;
+  const currentMap = checkpoint?.currentMap || 'ocean';
   const checkpointDepth = Math.max(0, checkpoint?.depth ?? checkpoint?.position?.y ?? 0);
   const initialGenDepth = Math.max(2000, checkpointDepth + TERRAIN_CHUNK_SIZE);
-  const terrain = generateTerrain(terrainSeed, initialGenDepth);
+  
+  const terrain = currentMap === 'volcanic' 
+    ? generateVolcanicTerrain(terrainSeed, initialGenDepth)
+    : generateTerrain(terrainSeed, initialGenDepth);
 
   const ups = progress ? applyUpgrades(progress) : {
     maxHull: 100, maxOxygen: 100, maxPower: 100,
     speed: 1, harpoonDamage: HARPOON_BASE_DAMAGE, maxAmmo: 20,
     armorLevel: 0, sonarLevel: 0, fireRateBonus: 0, projSpeedBonus: 0,
-    stealthBonus: 0, regenLevel: 0, lightLevel: 0,
+    stealthBonus: 0, regenLevel: 0, lightLevel: 0, heatShieldLevel: 0,
   };
 
   const weaponsOwned = progress?.weaponsOwned || ['harpoon'];
@@ -92,6 +98,11 @@ export function createInitialState(progress?: PlayerProgress): GameState {
       sonarActive: false,
       speed: ups.speed,
       harpoonDamage: ups.harpoonDamage,
+      heat: checkpoint?.heat ?? 0,
+      maxHeat: 100,
+      heatWarning: false,
+      systemGlitch: false,
+      glitchTimer: 0,
     },
     creatures: [],
     terrain,
@@ -106,12 +117,16 @@ export function createInitialState(progress?: PlayerProgress): GameState {
     time: 0,
     paused: false,
     gameOver: false,
-    currentZone: getZoneAtDepth(checkpointDepth),
+    currentZone: currentMap === 'volcanic' ? 'volcanic' : getZoneAtDepth(checkpointDepth),
     deepestDepth: checkpointDepth,
     resources: { coral: 0, metal: 0, crystal: 0, organism: 0, artifact: 0 },
     killCount: checkpoint?.killCount ? { ...checkpoint.killCount } : {},
     bossesDefeated: checkpoint?.bossesDefeated ? [...checkpoint.bossesDefeated] : [],
     generatedDepth: initialGenDepth,
+    currentMap,
+    portalActive: false,
+    portalPos: null,
+    volcanicDepthOffset: 0,
   };
 }
 
@@ -127,30 +142,34 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   state.time += dt;
   const sub = state.sub;
   const ups = upgradeCache;
+  const isVolcanic = state.currentMap === 'volcanic';
 
   // --- Infinite terrain generation ---
   if (sub.depth > state.generatedDepth - TERRAIN_CHUNK_SIZE) {
-    state.generatedDepth = extendTerrain(
-      state.terrain,
-      state.generatedDepth,
-      sub.depth + TERRAIN_CHUNK_SIZE * 2,
-      terrainSeed
-    );
+    if (isVolcanic) {
+      state.generatedDepth = extendVolcanicTerrain(
+        state.terrain, state.generatedDepth, sub.depth + TERRAIN_CHUNK_SIZE * 2, terrainSeed
+      );
+    } else {
+      state.generatedDepth = extendTerrain(
+        state.terrain, state.generatedDepth, sub.depth + TERRAIN_CHUNK_SIZE * 2, terrainSeed
+      );
+    }
   }
-
-  // Aiming always follows submarine facing direction
-  // (facing is resolved from current movement/rotation below).
 
   // --- Direct WASD movement ---
   let thrusting = false;
-  const thrustPower = SUB_THRUST * sub.speed;
+  // Heat/glitch effects on controls
+  const heatPenalty = sub.heat > 70 ? 0.6 : sub.heat > 40 ? 0.85 : 1;
+  const glitchPenalty = sub.systemGlitch ? 0.5 : 1;
+  const thrustPower = SUB_THRUST * sub.speed * heatPenalty * glitchPenalty;
 
   if (input.isDown('w') || input.isDown('ArrowUp')) { sub.vel.y -= thrustPower; thrusting = true; }
   if (input.isDown('s') || input.isDown('ArrowDown')) { sub.vel.y += thrustPower; thrusting = true; }
   if (input.isDown('a') || input.isDown('ArrowLeft')) { sub.vel.x -= thrustPower; thrusting = true; }
   if (input.isDown('d') || input.isDown('ArrowRight')) { sub.vel.x += thrustPower; thrusting = true; }
 
-  // Rotation to face velocity (sub body follows movement)
+  // Rotation to face velocity
   const speed = Math.sqrt(sub.vel.x ** 2 + sub.vel.y ** 2);
   if (speed > 0.3) {
     const targetRot = Math.atan2(sub.vel.y, sub.vel.x);
@@ -161,11 +180,8 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   }
 
   sub.aimAngle = sub.rotation;
-
-  // Keep depth values stable before any collisions
   sub.depth = Math.max(0, sub.pos.y);
 
-  // Clamp to ocean surface only
   if (sub.pos.y < 0) {
     sub.pos.y = 0;
     sub.vel.y = 0;
@@ -174,12 +190,11 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   // Toggle light
   if (input.wasPressed('f')) sub.lightOn = !sub.lightOn;
 
-  // Reload ammo (R key)
+  // Reload ammo
   if (input.wasPressed('r')) {
     const activeWeapon = sub.weapons[sub.activeWeaponIndex];
     if (activeWeapon && activeWeapon.ammo < activeWeapon.maxAmmo) {
       activeWeapon.ammo = activeWeapon.maxAmmo;
-      // Reload costs power
       sub.power = Math.max(0, sub.power - 5);
     }
   }
@@ -195,10 +210,11 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   // Sonar ping
   if (input.wasPressed('e') && sub.sonarCooldown <= 0) {
     const sonarLevel = ups?.sonarLevel ?? 0;
+    const sonarReduction = isVolcanic ? 0.6 : 1; // Volcanic reduces sonar
     state.sonarPings.push({
       origin: { ...sub.pos },
       radius: 0,
-      maxRadius: SONAR_MAX_RADIUS * (1 + sonarLevel * 0.25),
+      maxRadius: SONAR_MAX_RADIUS * (1 + sonarLevel * 0.25) * sonarReduction,
       alpha: 1,
       echoReturned: false,
       echoRadius: 0,
@@ -207,7 +223,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
     sub.engineNoise = Math.min(sub.engineNoise + 0.3, 1);
   }
 
-  // Weapon fire uses facing direction, fires on SPACE or left click
+  // Weapon fire
   const activeWeapon = sub.weapons[sub.activeWeaponIndex];
   const wantFire = input.isDown(' ') || input.wasPressed(' ') || input.mouseDown || input.mouseJustPressed;
   if (activeWeapon && wantFire && activeWeapon.ammo > 0 && activeWeapon.cooldown <= 0) {
@@ -260,10 +276,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
         state.projectiles.push({
           pos: { x: projX, y: projY },
           vel: { x: Math.cos(fireAngle) * 8 * projSpeedMultiplier, y: Math.sin(fireAngle) * 8 * projSpeedMultiplier },
-          life: 80,
-          damage: 80,
-          type: 'torpedo',
-          radius: 100,
+          life: 80, damage: 80, type: 'torpedo', radius: 100,
         });
         break;
       }
@@ -272,9 +285,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
         state.projectiles.push({
           pos: { x: projX, y: projY },
           vel: { x: Math.cos(fireAngle) * 18 * projSpeedMultiplier, y: Math.sin(fireAngle) * 18 * projSpeedMultiplier },
-          life: 15,
-          damage: 12,
-          type: 'plasma',
+          life: 15, damage: 12, type: 'plasma',
         });
         break;
       }
@@ -285,9 +296,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
           state.projectiles.push({
             pos: { x: projX, y: projY },
             vel: { x: Math.cos(spread) * 10 * projSpeedMultiplier, y: Math.sin(spread) * 10 * projSpeedMultiplier },
-            life: 25,
-            damage: 10,
-            type: 'flak',
+            life: 25, damage: 10, type: 'flak',
           });
         }
         break;
@@ -297,10 +306,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
         state.projectiles.push({
           pos: { x: projX, y: projY },
           vel: { x: Math.cos(fireAngle) * 14 * projSpeedMultiplier, y: Math.sin(fireAngle) * 14 * projSpeedMultiplier },
-          life: 35,
-          damage: 15,
-          type: 'cryo',
-          special: 'freeze',
+          life: 35, damage: 15, type: 'cryo', special: 'freeze',
         });
         break;
       }
@@ -309,10 +315,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
         state.projectiles.push({
           pos: { x: projX, y: projY },
           vel: { x: Math.cos(fireAngle) * 30 * projSpeedMultiplier, y: Math.sin(fireAngle) * 30 * projSpeedMultiplier },
-          life: 40,
-          damage: 120,
-          type: 'railgun',
-          special: 'pierce',
+          life: 40, damage: 120, type: 'railgun', special: 'pierce',
         });
         break;
       }
@@ -321,11 +324,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
         state.projectiles.push({
           pos: { x: projX, y: projY },
           vel: { x: Math.cos(fireAngle) * 5, y: Math.sin(fireAngle) * 5 },
-          life: 120,
-          damage: 40,
-          type: 'vortex',
-          radius: 200,
-          special: 'gravity',
+          life: 120, damage: 40, type: 'vortex', radius: 200, special: 'gravity',
         });
         break;
       }
@@ -356,8 +355,6 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   sub.pos.x += sub.vel.x;
   sub.pos.y += sub.vel.y;
 
-  // Infinite horizontal ocean and infinite vertical generation.
-  // No hard side walls: terrain is now environmental, not a movement clamp.
   if (sub.pos.y < 0) {
     sub.pos.y = 0;
     sub.vel.y = 0;
@@ -365,7 +362,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
 
   // Depth
   sub.depth = Math.max(0, sub.pos.y);
-  state.currentZone = getZoneAtDepth(sub.depth);
+  state.currentZone = isVolcanic ? 'volcanic' : getZoneAtDepth(sub.depth);
   state.deepestDepth = Math.max(state.deepestDepth, sub.depth);
 
   // Engine noise
@@ -385,10 +382,107 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   }
 
   // Pressure damage
-  const zoneConfig = getZoneConfig(sub.depth);
-  if (zoneConfig.pressureDamage > 0) {
-    const armorReduction = 1 - (ups?.armorLevel ?? 0) * 0.25;
-    sub.hull = Math.max(0, sub.hull - zoneConfig.pressureDamage * Math.max(0.1, armorReduction));
+  if (!isVolcanic) {
+    const zoneConfig = getZoneConfig(sub.depth);
+    if (zoneConfig.pressureDamage > 0) {
+      const armorReduction = 1 - (ups?.armorLevel ?? 0) * 0.25;
+      sub.hull = Math.max(0, sub.hull - zoneConfig.pressureDamage * Math.max(0.1, armorReduction));
+    }
+  }
+
+  // === VOLCANIC HAZARDS ===
+  if (isVolcanic) {
+    const heatShieldReduction = 1 - (ups?.heatShieldLevel ?? 0) * 0.2;
+    
+    // Check proximity to volcanic features
+    for (const f of state.terrain.features) {
+      if (f.type === 'vent') {
+        const dx = f.pos.x - sub.pos.x;
+        const dy = f.pos.y - sub.pos.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 120) {
+          // Vent blast damage + heat
+          sub.heat = Math.min(sub.maxHeat, sub.heat + 0.15 * heatShieldReduction);
+          if (dist < 60 && f.active) {
+            sub.hull -= 0.08;
+          }
+          // Spawn steam particles
+          if (state.time % 5 === 0) {
+            state.particles.push({
+              pos: { x: f.pos.x + (Math.random() - 0.5) * 20, y: f.pos.y - 10 },
+              vel: { x: (Math.random() - 0.5) * 2, y: -2 - Math.random() * 3 },
+              life: 40, maxLife: 40, size: 4 + Math.random() * 4, color: '#ffffff', alpha: 0.3, type: 'steam',
+            });
+          }
+        }
+      } else if (f.type === 'fissure') {
+        const dx = f.pos.x - sub.pos.x;
+        const dy = f.pos.y - sub.pos.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 100) {
+          sub.heat = Math.min(sub.maxHeat, sub.heat + 0.1 * heatShieldReduction);
+          // Micro eruptions
+          if (f.eruptTimer !== undefined) {
+            f.eruptTimer = (f.eruptTimer ?? 0) - dt;
+            if (f.eruptTimer <= 0) {
+              f.eruptTimer = 200 + Math.random() * 300;
+              // Magma fragments
+              for (let i = 0; i < 3; i++) {
+                state.particles.push({
+                  pos: { x: f.pos.x + (Math.random() - 0.5) * 30, y: f.pos.y },
+                  vel: { x: (Math.random() - 0.5) * 4, y: -3 - Math.random() * 5 },
+                  life: 60, maxLife: 60, size: 3 + Math.random() * 3, color: '#ff4400', alpha: 0.9, type: 'magma',
+                });
+              }
+              if (dist < 50) sub.hull -= 3;
+            }
+          }
+        }
+      } else if (f.type === 'ash_cloud') {
+        const dx = f.pos.x - sub.pos.x;
+        const dy = f.pos.y - sub.pos.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < f.size * 2) {
+          // Ash particles
+          if (state.time % 8 === 0) {
+            state.particles.push({
+              pos: { x: sub.pos.x + (Math.random() - 0.5) * 100, y: sub.pos.y + (Math.random() - 0.5) * 100 },
+              vel: { x: (Math.random() - 0.5) * 0.5, y: -0.3 },
+              life: 80, maxLife: 80, size: 2, color: '#666666', alpha: 0.4, type: 'ash',
+            });
+          }
+        }
+      }
+    }
+
+    // Gas pocket system glitch (random)
+    if (state.time % 600 === 0 && Math.random() < 0.3 && sub.depth > 200) {
+      sub.systemGlitch = true;
+      sub.glitchTimer = 120;
+    }
+
+    // Heat cooling when not near hazards
+    if (sub.heat > 0) {
+      sub.heat = Math.max(0, sub.heat - 0.03);
+    }
+
+    // Heat effects
+    sub.heatWarning = sub.heat > 50;
+    if (sub.heat > 80) {
+      sub.power = Math.max(0, sub.power - 0.02);
+      if (state.time % 30 === 0) sub.hull -= 0.5;
+    }
+    if (sub.heat >= sub.maxHeat) {
+      sub.hull -= 0.3;
+    }
+  }
+
+  // System glitch countdown
+  if (sub.glitchTimer > 0) {
+    sub.glitchTimer -= dt;
+    if (sub.glitchTimer <= 0) {
+      sub.systemGlitch = false;
+    }
   }
 
   if (sub.power <= 0) sub.lightOn = false;
@@ -408,6 +502,31 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   state.camera.x += (sub.pos.x - state.camera.x) * 0.08;
   state.camera.y += (sub.pos.y - state.camera.y) * 0.08;
 
+  // --- Portal check (hadal boss defeated → spawn portal) ---
+  if (!isVolcanic && !state.portalActive && state.bossesDefeated.includes('hadal_boss')) {
+    state.portalActive = true;
+    state.portalPos = { x: 0, y: 6100 };
+    // Add portal terrain feature
+    state.terrain.features.push({
+      pos: { x: 0, y: 6100 },
+      type: 'portal',
+      size: 60,
+      color: '#ff4400',
+      active: true,
+    });
+  }
+
+  // Portal entry
+  if (state.portalActive && state.portalPos) {
+    const dx = state.portalPos.x - sub.pos.x;
+    const dy = state.portalPos.y - sub.pos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 80) {
+      // Transition to volcanic abyss!
+      transitionToVolcanic(state, progress);
+    }
+  }
+
   // --- Chest collection ---
   for (const feature of state.terrain.features) {
     if (feature.type === 'chest' && !feature.collected) {
@@ -419,13 +538,11 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
         const value = feature.coinsValue || 10;
         state.coins += value;
         state.score += value * 5;
-        // Coin particles
         for (let i = 0; i < 8; i++) {
           state.particles.push({
             pos: { x: feature.pos.x, y: feature.pos.y },
             vel: { x: (Math.random() - 0.5) * 4, y: -1 - Math.random() * 3 },
-            life: 50, maxLife: 50, size: 3,
-            color: '#ffd700', alpha: 1, type: 'coin',
+            life: 50, maxLife: 50, size: 3, color: '#ffd700', alpha: 1, type: 'coin',
           });
         }
       }
@@ -446,15 +563,11 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
         const dy = proj.pos.y - c.pos.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < vortexRadius && dist > 10) {
-          const pull = 0.3;
-          c.vel.x += (dx / dist) * pull;
-          c.vel.y += (dy / dist) * pull;
-          if (state.time % 10 === 0) {
-            c.health -= 5;
-          }
+          c.vel.x += (dx / dist) * 0.3;
+          c.vel.y += (dy / dist) * 0.3;
+          if (state.time % 10 === 0) c.health -= 5;
         }
       }
-      // Slow down vortex
       proj.vel.x *= 0.95;
       proj.vel.y *= 0.95;
     }
@@ -471,10 +584,9 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
         creature.vel.x += proj.vel.x * 0.3;
         creature.vel.y += proj.vel.y * 0.3;
 
-        // Special effects
         if (proj.special === 'freeze') {
-          creature.stunTimer = 150; // Long freeze
-          creature.speed *= 0.2; // Slow
+          creature.stunTimer = 150;
+          creature.speed *= 0.2;
         } else if (proj.type === 'shock') {
           creature.stunTimer = 40;
         } else {
@@ -501,8 +613,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
             state.particles.push({
               pos: { x: proj.pos.x, y: proj.pos.y },
               vel: { x: Math.cos(angle) * (3 + Math.random() * 5), y: Math.sin(angle) * (3 + Math.random() * 5) },
-              life: 30, maxLife: 30, size: 3 + Math.random() * 4,
-              color: '#ff6600', alpha: 1, type: 'explosion',
+              life: 30, maxLife: 30, size: 3 + Math.random() * 4, color: '#ff6600', alpha: 1, type: 'explosion',
             });
           }
         }
@@ -532,22 +643,17 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
             state.particles.push({
               pos: { x: creature.pos.x, y: creature.pos.y },
               vel: { x: (Math.random() - 0.5) * 6, y: (Math.random() - 0.5) * 6 },
-              life: 50, maxLife: 50, size: 2 + Math.random() * 4,
-              color: creature.glowColor, alpha: 0.8, type: 'debris',
+              life: 50, maxLife: 50, size: 2 + Math.random() * 4, color: creature.glowColor, alpha: 0.8, type: 'debris',
             });
           }
           state.particles.push({
             pos: { x: creature.pos.x, y: creature.pos.y },
             vel: { x: 0, y: -1 },
-            life: 60, maxLife: 60, size: 6,
-            color: '#ffd700', alpha: 1, type: 'coin',
+            life: 60, maxLife: 60, size: 6, color: '#ffd700', alpha: 1, type: 'coin',
           });
         }
 
-        // Railgun pierces through
-        if (proj.special === 'pierce') {
-          continue; // Don't remove projectile
-        }
+        if (proj.special === 'pierce') continue;
         hit = true;
         break;
       }
@@ -569,7 +675,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
     const dy = creature.pos.y - sub.pos.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < creature.size + 30 && creature.damage > 0 && creature.attackCooldown <= 0) {
-      const shouldAttack = creature.state === 'chase' || creature.state === 'charge' || creature.type === 'jellyfish';
+      const shouldAttack = creature.state === 'chase' || creature.state === 'charge' || creature.type === 'jellyfish' || creature.type === 'vent_crab';
       if (shouldAttack) {
         const dmgMult = creature.state === 'charge' ? 1.5 : 1;
         sub.hull -= creature.damage * dmgMult;
@@ -578,12 +684,18 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
         const ny = dy / (dist || 1);
         sub.vel.x -= nx * 4;
         sub.vel.y -= ny * 4;
+
+        // Magma ray heat effect
+        if (creature.type === 'magma_ray') {
+          sub.heat = Math.min(sub.maxHeat, sub.heat + 15);
+        }
+
         for (let i = 0; i < 5; i++) {
           state.particles.push({
             pos: { x: sub.pos.x + (Math.random() - 0.5) * 30, y: sub.pos.y + (Math.random() - 0.5) * 20 },
             vel: { x: (Math.random() - 0.5) * 4, y: (Math.random() - 0.5) * 4 },
             life: 15, maxLife: 15, size: 4,
-            color: '#ff0000', alpha: 1, type: 'debris',
+            color: isVolcanic ? '#ff4400' : '#ff0000', alpha: 1, type: 'debris',
           });
         }
       }
@@ -619,6 +731,17 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   if (Math.random() < 0.3) spawnBubble(state);
   if (sub.depth > 200 && Math.random() < 0.1) spawnBiolum(state);
 
+  // Volcanic ambient particles
+  if (isVolcanic) {
+    if (Math.random() < 0.2) {
+      state.particles.push({
+        pos: { x: sub.pos.x + (Math.random() - 0.5) * 600, y: sub.pos.y + (Math.random() - 0.5) * 400 },
+        vel: { x: (Math.random() - 0.5) * 0.3, y: -0.5 - Math.random() * 0.5 },
+        life: 120, maxLife: 120, size: 1 + Math.random() * 2, color: '#888888', alpha: 0.2, type: 'ash',
+      });
+    }
+  }
+
   // Thrust bubbles
   if (thrusting) {
     for (let i = 0; i < 2; i++) {
@@ -631,13 +754,39 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
           x: -Math.cos(sub.rotation) * 2 + (Math.random() - 0.5),
           y: -Math.sin(sub.rotation) * 2 + (Math.random() - 0.5) - 0.5,
         },
-        life: 40, maxLife: 40, size: 2 + Math.random() * 3,
-        color: '#b4c5cf', alpha: 0.6, type: 'bubble',
+        life: 40, maxLife: 40, size: 2 + Math.random() * 3, color: '#b4c5cf', alpha: 0.6, type: 'bubble',
       });
     }
   }
 
   input.clearFrame();
+}
+
+function transitionToVolcanic(state: GameState, progress?: PlayerProgress) {
+  state.currentMap = 'volcanic';
+  state.portalActive = false;
+  state.portalPos = null;
+  state.sub.pos = { x: 0, y: 100 };
+  state.sub.vel = { x: 0, y: 0 };
+  state.sub.depth = 100;
+  state.sub.heat = 0;
+  state.creatures = [];
+  state.projectiles = [];
+  state.particles = [];
+  state.sonarPings = [];
+  state.terrain = generateVolcanicTerrain(terrainSeed + 99999, 3000);
+  state.generatedDepth = 3000;
+  state.currentZone = 'volcanic';
+  state.camera = { x: 0, y: 100 };
+  
+  // Epic transition particles
+  for (let i = 0; i < 30; i++) {
+    state.particles.push({
+      pos: { x: (Math.random() - 0.5) * 400, y: 100 + (Math.random() - 0.5) * 200 },
+      vel: { x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 5 },
+      life: 80, maxLife: 80, size: 3 + Math.random() * 5, color: '#ff4400', alpha: 0.8, type: 'magma',
+    });
+  }
 }
 
 let bossSpawned: Set<number> = new Set();
@@ -648,10 +797,13 @@ export function resetBossTracker() {
 }
 
 function updateCreatureSpawning(state: GameState) {
-  // Denser spawn cadence with depth scaling
+  const isVolcanic = state.currentMap === 'volcanic';
+
   if (state.time % 95 === 0) {
     const densityMultiplier = 1 + Math.min(1.2, state.sub.depth / 6000);
-    const newCreatures = spawnCreaturesForDepth(state.sub.depth, state.worldWidth * densityMultiplier);
+    const newCreatures = isVolcanic
+      ? spawnVolcanicCreatures(state.sub.depth, state.worldWidth * densityMultiplier)
+      : spawnCreaturesForDepth(state.sub.depth, state.worldWidth * densityMultiplier);
 
     for (const c of newCreatures) {
       c.pos.x += state.sub.pos.x + (Math.random() - 0.5) * 1200;
@@ -669,34 +821,46 @@ function updateCreatureSpawning(state: GameState) {
     }
   }
 
-  for (const bossDepth of BOSS_SPAWN_DEPTHS) {
-    if (!bossSpawned.has(bossDepth) && Math.abs(state.sub.depth - bossDepth) < 50) {
-      const boss = spawnBoss(bossDepth, state.worldWidth);
+  if (isVolcanic) {
+    // Volcanic boss at depth 3000
+    if (!bossSpawned.has(99999) && Math.abs(state.sub.depth - VOLCANIC_BOSS_DEPTH) < 50) {
+      const boss = spawnVolcanicBoss(state.worldWidth);
       if (boss) {
         boss.pos.x = state.sub.pos.x + (Math.random() > 0.5 ? 400 : -400);
-        boss.pos.y = bossDepth;
+        boss.pos.y = VOLCANIC_BOSS_DEPTH;
         boss.patrolCenter = { ...boss.pos };
         state.creatures.push(boss);
-        bossSpawned.add(bossDepth);
+        bossSpawned.add(99999);
       }
     }
-  }
+  } else {
+    for (const bossDepth of BOSS_SPAWN_DEPTHS) {
+      if (!bossSpawned.has(bossDepth) && Math.abs(state.sub.depth - bossDepth) < 50) {
+        const boss = spawnBoss(bossDepth, state.worldWidth);
+        if (boss) {
+          boss.pos.x = state.sub.pos.x + (Math.random() > 0.5 ? 400 : -400);
+          boss.pos.y = bossDepth;
+          boss.patrolCenter = { ...boss.pos };
+          state.creatures.push(boss);
+          bossSpawned.add(bossDepth);
+        }
+      }
+    }
 
-  // Additional bosses every 2000m after 8000m in infinite mode
-  const nextBossDepth = Math.floor(state.sub.depth / 2000) * 2000;
-  if (nextBossDepth >= 8000 && !bossSpawned.has(nextBossDepth) && Math.abs(state.sub.depth - nextBossDepth) < 50) {
-    const boss = spawnBoss(nextBossDepth, state.worldWidth);
-    if (boss) {
-      boss.pos.x = state.sub.pos.x + (Math.random() > 0.5 ? 400 : -400);
-      boss.pos.y = nextBossDepth;
-      boss.patrolCenter = { ...boss.pos };
-      // Scale boss health with depth
-      const scaleFactor = 1 + (nextBossDepth - 6000) / 4000;
-      boss.health *= scaleFactor;
-      boss.maxHealth *= scaleFactor;
-      boss.damage *= scaleFactor;
-      state.creatures.push(boss);
-      bossSpawned.add(nextBossDepth);
+    const nextBossDepth = Math.floor(state.sub.depth / 2000) * 2000;
+    if (nextBossDepth >= 8000 && !bossSpawned.has(nextBossDepth) && Math.abs(state.sub.depth - nextBossDepth) < 50) {
+      const boss = spawnBoss(nextBossDepth, state.worldWidth);
+      if (boss) {
+        boss.pos.x = state.sub.pos.x + (Math.random() > 0.5 ? 400 : -400);
+        boss.pos.y = nextBossDepth;
+        boss.patrolCenter = { ...boss.pos };
+        const scaleFactor = 1 + (nextBossDepth - 6000) / 4000;
+        boss.health *= scaleFactor;
+        boss.maxHealth *= scaleFactor;
+        boss.damage *= scaleFactor;
+        state.creatures.push(boss);
+        bossSpawned.add(nextBossDepth);
+      }
     }
   }
 }
@@ -718,10 +882,18 @@ function updateParticles(state: GameState) {
       p.vel.x *= 0.9;
       p.vel.y *= 0.9;
     }
-    if (p.type === 'explosion') {
+    if (p.type === 'explosion' || p.type === 'magma') {
       p.vel.x *= 0.95;
       p.vel.y *= 0.95;
       p.size *= 0.97;
+    }
+    if (p.type === 'steam') {
+      p.vel.y -= 0.03;
+      p.alpha *= 0.98;
+      p.size *= 1.01;
+    }
+    if (p.type === 'ash') {
+      p.vel.x += (Math.random() - 0.5) * 0.05;
     }
     return p.life > 0;
   });
@@ -734,8 +906,7 @@ function spawnBubble(state: GameState) {
       y: state.sub.pos.y + (Math.random() - 0.5) * 500,
     },
     vel: { x: (Math.random() - 0.5) * 0.3, y: -0.3 - Math.random() * 0.5 },
-    life: 120, maxLife: 120, size: 1 + Math.random() * 2,
-    color: '#b4c5cf', alpha: 0.3, type: 'bubble',
+    life: 120, maxLife: 120, size: 1 + Math.random() * 2, color: '#b4c5cf', alpha: 0.3, type: 'bubble',
   });
 }
 
@@ -746,7 +917,6 @@ function spawnBiolum(state: GameState) {
       y: state.sub.pos.y + (Math.random() - 0.5) * 600,
     },
     vel: { x: (Math.random() - 0.5) * 0.2, y: (Math.random() - 0.5) * 0.2 },
-    life: 200, maxLife: 200, size: 1 + Math.random() * 3,
-    color: '#e0b0ff', alpha: 0.5 + Math.random() * 0.3, type: 'biolum',
+    life: 200, maxLife: 200, size: 1 + Math.random() * 3, color: '#e0b0ff', alpha: 0.5 + Math.random() * 0.3, type: 'biolum',
   });
 }

@@ -30,6 +30,7 @@ export function spawnCreature(type: CreatureType, pos: Vec2, zone: DepthZone, is
     attackCooldown: 0,
     chargeTimer: 0,
     chargeTarget: null,
+    abilityTimer: isBoss ? 200 : undefined,
   };
 }
 
@@ -58,10 +59,34 @@ export function spawnCreaturesForDepth(depth: number, worldWidth: number): Creat
     const type = zoneConfig.creatureTypes[Math.floor(Math.random() * zoneConfig.creatureTypes.length)];
     const x = (Math.random() - 0.5) * worldWidth * 0.8;
     const y = depth + Math.random() * 300;
-    creatures.push(spawnCreature(type, { x, y }, zone));
+    creatures.push(spawnCreature(type, { x, y: Math.max(20, y) }, zone));
   }
 
   return creatures;
+}
+
+// === VOLCANIC CREATURES ===
+export function spawnVolcanicCreatures(depth: number, worldWidth: number): Creature[] {
+  const creatures: Creature[] = [];
+  const types: CreatureType[] = ['lava_eel', 'vent_crab', 'magma_ray'];
+  const count = 2 + Math.floor(Math.random() * 3);
+
+  for (let i = 0; i < count; i++) {
+    // Magma rays are rarer
+    const r = Math.random();
+    const type = r < 0.15 ? 'magma_ray' : r < 0.5 ? 'lava_eel' : 'vent_crab';
+    const x = (Math.random() - 0.5) * worldWidth * 0.8;
+    const y = Math.max(20, depth + Math.random() * 300);
+    creatures.push(spawnCreature(type, { x, y }, 'volcanic'));
+  }
+
+  return creatures;
+}
+
+export function spawnVolcanicBoss(worldWidth: number): Creature {
+  const boss = spawnCreature('infernal_leviathan', { x: 0, y: 3000 }, 'volcanic', true);
+  boss.abilityTimer = 150;
+  return boss;
 }
 
 export function updateCreature(creature: Creature, subPos: Vec2, dt: number, engineNoise: number): void {
@@ -77,18 +102,51 @@ export function updateCreature(creature: Creature, subPos: Vec2, dt: number, eng
     return;
   }
 
+  // Submerged boss mechanic (lava dive)
+  if (creature.submerged) {
+    creature.abilityTimer = (creature.abilityTimer ?? 0) - dt;
+    if ((creature.abilityTimer ?? 0) <= 0) {
+      creature.submerged = false;
+      creature.pos = { x: subPos.x + (Math.random() - 0.5) * 200, y: subPos.y + 100 };
+      creature.vel = { x: 0, y: -8 }; // Burst upward
+    }
+    return;
+  }
+
   const dx = subPos.x - creature.pos.x;
   const dy = subPos.y - creature.pos.y;
   const dist = Math.sqrt(dx * dx + dy * dy);
   const effectiveDetection = creature.detectionRadius * (1 + engineNoise * 0.8);
 
-  // State transitions with more advanced AI
+  // State transitions
   if (creature.type === 'fish') {
     creature.state = dist < effectiveDetection * 0.5 ? 'flee' : 'patrol';
   } else if (creature.type === 'jellyfish') {
     creature.state = 'patrol';
+  } else if (creature.type === 'vent_crab') {
+    // Crabs swarm aggressively
+    creature.state = dist < effectiveDetection ? 'chase' : 'patrol';
+  } else if (creature.type === 'lava_eel') {
+    // Lava eels ambush from fissures then charge
+    if (dist < effectiveDetection * 0.3 && creature.chargeTimer <= 0) {
+      creature.state = 'charge';
+      creature.chargeTimer = 80;
+      creature.chargeTarget = { ...subPos };
+    } else if (dist < effectiveDetection) {
+      creature.state = creature.chargeTimer > 40 ? 'ambush' : 'chase';
+    } else {
+      creature.state = 'patrol';
+    }
+  } else if (creature.type === 'magma_ray') {
+    // Rays patrol and chase when close
+    if (dist < effectiveDetection * 0.5) {
+      creature.state = 'chase';
+    } else if (dist < effectiveDetection) {
+      creature.state = 'chase';
+    } else {
+      creature.state = 'patrol';
+    }
   } else if (creature.type === 'eel') {
-    // Eels ambush then charge
     if (dist < effectiveDetection * 0.3 && creature.chargeTimer <= 0) {
       creature.state = 'charge';
       creature.chargeTimer = 120;
@@ -99,7 +157,6 @@ export function updateCreature(creature: Creature, subPos: Vec2, dt: number, eng
       creature.state = 'patrol';
     }
   } else if (creature.type === 'phantom') {
-    // Phantoms teleport-ambush: they stay in ambush until very close, then charge
     if (dist < effectiveDetection * 0.4) {
       creature.state = 'charge';
       if (!creature.chargeTarget) creature.chargeTarget = { ...subPos };
@@ -110,7 +167,6 @@ export function updateCreature(creature: Creature, subPos: Vec2, dt: number, eng
     }
   } else {
     if (dist < effectiveDetection) {
-      // Larger creatures charge when close
       if (dist < effectiveDetection * 0.3 && creature.chargeTimer <= 0 && (creature.type === 'serpent' || creature.type === 'leviathan')) {
         creature.state = 'charge';
         creature.chargeTimer = 90;
@@ -132,6 +188,24 @@ export function updateCreature(creature: Creature, subPos: Vec2, dt: number, eng
     } else if (creature.state !== 'charge') {
       creature.state = 'chase';
     }
+
+    // Infernal Leviathan abilities
+    if (creature.type === 'infernal_leviathan' && creature.isBoss) {
+      creature.abilityTimer = (creature.abilityTimer ?? 0) - dt;
+      if ((creature.abilityTimer ?? 0) <= 0) {
+        const ability = Math.random();
+        if (ability < 0.4) {
+          // Lava Dive
+          creature.submerged = true;
+          creature.abilityTimer = 120;
+          creature.activeAbility = 'lava_dive';
+        } else {
+          // Vent eruption - just reset timer
+          creature.abilityTimer = 150 + Math.random() * 100;
+          creature.activeAbility = 'vent_eruption';
+        }
+      }
+    }
   }
 
   if (creature.chargeTimer > 0) creature.chargeTimer -= dt;
@@ -140,7 +214,6 @@ export function updateCreature(creature: Creature, subPos: Vec2, dt: number, eng
 
   switch (creature.state) {
     case 'charge': {
-      // Fast lunge towards target
       const target = creature.chargeTarget || subPos;
       const cdx = target.x - creature.pos.x;
       const cdy = target.y - creature.pos.y;
@@ -166,7 +239,6 @@ export function updateCreature(creature: Creature, subPos: Vec2, dt: number, eng
       break;
     }
     case 'ambush': {
-      // Stay still, wait
       creature.vel.x *= 0.9;
       creature.vel.y *= 0.9;
       break;
@@ -196,7 +268,6 @@ export function updateCreature(creature: Creature, subPos: Vec2, dt: number, eng
   creature.pos.x += creature.vel.x;
   creature.pos.y += creature.vel.y;
 
-  // Clamp creatures to stay below the water surface
   if (creature.pos.y < 10) {
     creature.pos.y = 10;
     creature.vel.y = Math.abs(creature.vel.y) * 0.5;
