@@ -128,7 +128,7 @@ const HUD: React.FC<HUDProps> = ({
           </div>
         </div>
         <div className="flex flex-col items-center gap-0.5">
-          <span className="text-xs" style={{ color: '#4a5a64', fontSize: '8px' }}>
+            <span className="text-xs" style={{ color: '#4a5a64', fontSize: '8px' }}>
             {weaponLabels[activeWeapon] || activeWeapon.toUpperCase()}
           </span>
           <span className="text-xs font-bold" style={{ color: ammo > 3 ? '#b4c5cf' : '#ff4500', fontSize: '11px' }}>
