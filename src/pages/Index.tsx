@@ -31,6 +31,7 @@ const Index: React.FC = () => {
   const [multiplayerRoomId, setMultiplayerRoomId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const { user } = useAuth();
+  const progressRef = useRef<PlayerProgress>(defaultProgress());
 
   // Load from Firestore on login
   useEffect(() => {
