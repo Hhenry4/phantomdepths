@@ -203,6 +203,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
     const lightLevel = progress.upgrades.light || 0;
     render(ctx, state, canvas.width, canvas.height, otherPlayersRef.current, lightLevel);
 
+    if (!state.paused && !state.gameOver && state.time % 600 === 0) {
+      saveCheckpoint(state);
+    }
+
     if (state.time % 3 === 0 || state.gameOver || state.paused) {
       updateHud(state);
     }
