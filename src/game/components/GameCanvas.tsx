@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { InputManager } from '../engine/Input';
 import { createInitialState, resetBossTracker, updateGame } from '../engine/GameLoop';
 import { render } from '../engine/Renderer';
-import { GameState, PlayerProgress } from '../types';
+import { GameState, PlayerProgress, RunCheckpoint } from '../types';
 import HUD from './HUD';
 import { useAuth } from '../../firebase/AuthContext';
 import { updatePlayerData, subscribeToRoom, leaveRoom } from '../../firebase/multiplayer';
