@@ -41,6 +41,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
     activeWeapon: 'harpoon' as string,
     weaponCount: 1,
     xpEarned: 0,
+    heat: 0,
+    maxHeat: 100,
+    currentMap: 'ocean' as string,
   });
 
   const initGame = useCallback(() => {
