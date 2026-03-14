@@ -21,6 +21,8 @@ const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onStartMultiplayer,
   const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu');
   const [roomCode, setRoomCode] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
+  const [createdRoomId, setCreatedRoomId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
