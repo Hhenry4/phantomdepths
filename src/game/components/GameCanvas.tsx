@@ -119,6 +119,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
       activeWeapon: activeW?.type ?? 'harpoon',
       weaponCount: state.sub.weapons.length,
       xpEarned: state.xpEarned,
+      heat: state.sub.heat,
+      maxHeat: state.sub.maxHeat,
+      currentMap: state.currentMap,
     });
   }, []);
 
