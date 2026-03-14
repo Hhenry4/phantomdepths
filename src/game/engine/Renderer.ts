@@ -27,7 +27,7 @@ export function render(
   ctx.save();
   ctx.translate(canvasW / 2 - camera.x, canvasH / 2 - camera.y);
 
-  drawTerrain(ctx, state, camera, canvasW, canvasH);
+  drawWaterSurface(ctx, camera, canvasW);
   drawTerrainFeatures(ctx, state.terrain.features, camera, canvasH);
   drawParticles(ctx, state.particles);
   state.creatures.forEach(c => drawCreature(ctx, c, sub.depth));
@@ -78,6 +78,37 @@ function drawCurrents(ctx: CanvasRenderingContext2D, state: GameState, cw: numbe
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
+}
+
+function drawWaterSurface(ctx: CanvasRenderingContext2D, camera: Vec2, canvasW: number) {
+  const viewLeft = camera.x - canvasW;
+  const viewWidth = canvasW * 2;
+
+  // Soft bright layer above sea level to make the surface visible
+  const surfaceGlow = ctx.createLinearGradient(0, -220, 0, 0);
+  surfaceGlow.addColorStop(0, 'rgba(148, 205, 235, 0.16)');
+  surfaceGlow.addColorStop(1, 'rgba(148, 205, 235, 0.02)');
+  ctx.fillStyle = surfaceGlow;
+  ctx.fillRect(viewLeft, -220, viewWidth, 220);
+
+  // Surface line (top of water)
+  ctx.strokeStyle = 'rgba(120, 210, 255, 0.9)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(viewLeft, 0);
+  ctx.lineTo(viewLeft + viewWidth, 0);
+  ctx.stroke();
+
+  // Foam shimmer
+  ctx.strokeStyle = 'rgba(160, 225, 255, 0.28)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = viewLeft; x <= viewLeft + viewWidth; x += 20) {
+    const y = Math.sin((x + Date.now() * 0.08) * 0.02) * 2;
+    if (x === viewLeft) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
 }
 
 function drawAimLine(ctx: CanvasRenderingContext2D, pos: Vec2, aimAngle: number) {
@@ -701,30 +732,7 @@ function drawMinimap(ctx: CanvasRenderingContext2D, state: GameState, canvasW: n
     return mapX + relative * mapW;
   };
 
-  // Terrain (local horizontal window around current submarine position)
-  ctx.strokeStyle = '#2a3a4a';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let i = 0; i < state.terrain.left.length; i += 10) {
-    const p = state.terrain.left[i];
-    const mx = toMapX(p.x);
-    const my = mapY + (p.y / viewRange) * mapH;
-    if (mx > mapX && mx < mapX + mapW && my > mapY && my < mapY + mapH) {
-      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
-    }
-  }
-  ctx.stroke();
-
-  ctx.beginPath();
-  for (let i = 0; i < state.terrain.right.length; i += 10) {
-    const p = state.terrain.right[i];
-    const mx = toMapX(p.x);
-    const my = mapY + (p.y / viewRange) * mapH;
-    if (mx > mapX && mx < mapX + mapW && my > mapY && my < mapY + mapH) {
-      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
-    }
-  }
-  ctx.stroke();
+  // Intentionally no minimap canyon walls: open-ocean style navigation.
 
   // Creatures
   for (const c of state.creatures) {

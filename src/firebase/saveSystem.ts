@@ -1,9 +1,5 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from './config';
+import { supabase } from '@/integrations/supabase/client';
 import { PlayerProgress, RunCheckpoint } from '../game/types';
-
-const PRIMARY_COLLECTION = 'player_saves';
-const FALLBACK_COLLECTION = 'players';
 
 function normalizeCheckpoint(raw: any): RunCheckpoint | undefined {
   if (!raw || !raw.position) return undefined;
@@ -46,25 +42,20 @@ function normalizeProgress(data: any): PlayerProgress {
   };
 }
 
-// Sanitize data to remove undefined values (Firestore rejects them)
-function sanitize(obj: any): any {
-  if (obj === null || obj === undefined) return null;
-  if (typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(sanitize);
-  const clean: any = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (value !== undefined) {
-      clean[key] = sanitize(value);
-    }
+function sanitize(value: any): any {
+  if (value === undefined) return null;
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(sanitize);
+
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (v !== undefined) out[k] = sanitize(v);
   }
-  return clean;
+  return out;
 }
 
 export async function saveProgressToCloud(userId: string, progress: PlayerProgress): Promise<void> {
-  if (!userId) {
-    console.warn('[SaveSystem] No userId, skipping save');
-    return;
-  }
+  if (!userId) return;
 
   const payload = sanitize({
     coins: progress.coins,
@@ -76,72 +67,51 @@ export async function saveProgressToCloud(userId: string, progress: PlayerProgre
     xp: progress.xp,
     level: progress.level,
     weaponsOwned: progress.weaponsOwned,
-    equippedWeapon: progress.equippedWeapon || null,
-    runCheckpoint: progress.runCheckpoint ? {
-      position: { x: progress.runCheckpoint.position.x, y: progress.runCheckpoint.position.y },
-      velocity: { x: progress.runCheckpoint.velocity.x, y: progress.runCheckpoint.velocity.y },
-      rotation: progress.runCheckpoint.rotation,
-      aimAngle: progress.runCheckpoint.aimAngle,
-      depth: progress.runCheckpoint.depth,
-      hull: progress.runCheckpoint.hull,
-      power: progress.runCheckpoint.power,
-      oxygen: progress.runCheckpoint.oxygen,
-      coins: progress.runCheckpoint.coins,
-      xpEarned: progress.runCheckpoint.xpEarned,
-      killCount: progress.runCheckpoint.killCount,
-      bossesDefeated: progress.runCheckpoint.bossesDefeated,
-      savedAt: progress.runCheckpoint.savedAt,
-    } : null,
+    equippedWeapon: progress.equippedWeapon ?? null,
+    runCheckpoint: progress.runCheckpoint
+      ? {
+          position: { ...progress.runCheckpoint.position },
+          velocity: { ...progress.runCheckpoint.velocity },
+          rotation: progress.runCheckpoint.rotation,
+          aimAngle: progress.runCheckpoint.aimAngle,
+          depth: progress.runCheckpoint.depth,
+          hull: progress.runCheckpoint.hull,
+          power: progress.runCheckpoint.power,
+          oxygen: progress.runCheckpoint.oxygen,
+          coins: progress.runCheckpoint.coins,
+          xpEarned: progress.runCheckpoint.xpEarned,
+          killCount: { ...progress.runCheckpoint.killCount },
+          bossesDefeated: [...progress.runCheckpoint.bossesDefeated],
+          savedAt: progress.runCheckpoint.savedAt,
+        }
+      : null,
     lastSaved: Date.now(),
   });
 
-  console.log('[SaveSystem] Saving to Firestore for user:', userId, 'coins:', payload.coins, 'depth:', payload.deepestEver);
+  const { error } = await supabase.rpc('save_player_progress', {
+    p_firebase_uid: userId,
+    p_progress: payload,
+  });
 
-  try {
-    // Save to both collections for redundancy
-    const primaryRef = doc(db, PRIMARY_COLLECTION, userId);
-    const fallbackRef = doc(db, FALLBACK_COLLECTION, userId);
-    
-    await Promise.all([
-      setDoc(primaryRef, payload, { merge: true }).then(() => {
-        console.log('[SaveSystem] ✅ Primary save success');
-      }),
-      setDoc(fallbackRef, payload, { merge: true }).then(() => {
-        console.log('[SaveSystem] ✅ Fallback save success');
-      }),
-    ]);
-    
-    console.log('[SaveSystem] ✅ All saves completed successfully');
-  } catch (err: any) {
-    console.error('[SaveSystem] ❌ Cloud save failed:', err?.message || err);
-    console.error('[SaveSystem] Error code:', err?.code);
-    throw err;
+  if (error) {
+    console.error('[SaveSystem] Supabase save failed:', error.message);
+    throw error;
   }
 }
 
 export async function loadProgressFromCloud(userId: string): Promise<PlayerProgress | null> {
   if (!userId) return null;
 
-  console.log('[SaveSystem] Loading from Firestore for user:', userId);
+  const { data, error } = await supabase.rpc('load_player_progress', {
+    p_firebase_uid: userId,
+  });
 
-  try {
-    const primarySnap = await getDoc(doc(db, PRIMARY_COLLECTION, userId));
-    if (primarySnap.exists()) {
-      console.log('[SaveSystem] ✅ Loaded from primary collection');
-      return normalizeProgress(primarySnap.data());
-    }
-
-    const fallbackSnap = await getDoc(doc(db, FALLBACK_COLLECTION, userId));
-    if (fallbackSnap.exists()) {
-      console.log('[SaveSystem] ✅ Loaded from fallback collection');
-      return normalizeProgress(fallbackSnap.data());
-    }
-    
-    console.log('[SaveSystem] No existing save found for user');
-  } catch (err: any) {
-    console.error('[SaveSystem] ❌ Cloud load failed:', err?.message || err);
-    console.error('[SaveSystem] Error code:', err?.code);
+  if (error) {
+    console.error('[SaveSystem] Supabase load failed:', error.message);
+    return null;
   }
 
-  return null;
+  if (!data) return null;
+
+  return normalizeProgress(data);
 }
