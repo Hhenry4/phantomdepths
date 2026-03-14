@@ -252,12 +252,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
     }
   }, [gameLoop]);
 
-  // Auto-save on pause
-  useEffect(() => {
-    if (hudState.paused && stateRef.current) {
-      endGame(stateRef.current);
-    }
-  }, [hudState.paused, endGame]);
+  // Checkpoints are written on pause, periodic intervals, and unmount.
 
   return (
     <div className="relative w-full h-screen overflow-hidden" style={{ background: '#010810', cursor: 'crosshair' }}>
