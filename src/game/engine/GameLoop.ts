@@ -38,8 +38,12 @@ let terrainSeed = Date.now();
 
 export function createInitialState(progress?: PlayerProgress): GameState {
   terrainSeed = Date.now();
-  const initialGenDepth = 2000;
+
+  const checkpoint = progress?.runCheckpoint;
+  const checkpointDepth = Math.max(0, checkpoint?.depth ?? checkpoint?.position?.y ?? 0);
+  const initialGenDepth = Math.max(2000, checkpointDepth + TERRAIN_CHUNK_SIZE);
   const terrain = generateTerrain(terrainSeed, initialGenDepth);
+
   const ups = progress ? applyUpgrades(progress) : {
     maxHull: 100, maxOxygen: 100, maxPower: 100,
     speed: 1, harpoonDamage: HARPOON_BASE_DAMAGE, maxAmmo: 20,
@@ -60,24 +64,30 @@ export function createInitialState(progress?: PlayerProgress): GameState {
     };
   });
 
+  const activeWeaponIndex = Math.max(0, weapons.findIndex(w => w.type === progress?.equippedWeapon));
+  const startPos = checkpoint?.position ?? { x: 0, y: 50 };
+  const startVel = checkpoint?.velocity ?? { x: 0, y: 0 };
+  const startRotation = checkpoint?.rotation ?? Math.PI / 2;
+  const startAim = checkpoint?.aimAngle ?? startRotation;
+
   return {
     sub: {
-      pos: { x: 0, y: 50 },
-      vel: { x: 0, y: 0 },
-      rotation: Math.PI / 2,
-      aimAngle: Math.PI / 2,
+      pos: { ...startPos },
+      vel: { ...startVel },
+      rotation: startRotation,
+      aimAngle: startAim,
       thrust: 0,
-      hull: ups.maxHull,
+      hull: Math.min(ups.maxHull, Math.max(1, checkpoint?.hull ?? ups.maxHull)),
       maxHull: ups.maxHull,
-      power: ups.maxPower,
+      power: Math.min(ups.maxPower, Math.max(0, checkpoint?.power ?? ups.maxPower)),
       maxPower: ups.maxPower,
-      oxygen: ups.maxOxygen,
+      oxygen: Math.min(ups.maxOxygen, Math.max(1, checkpoint?.oxygen ?? ups.maxOxygen)),
       maxOxygen: ups.maxOxygen,
-      depth: 0,
+      depth: checkpointDepth,
       engineNoise: 0,
       lightOn: true,
       weapons,
-      activeWeaponIndex: 0,
+      activeWeaponIndex,
       sonarCooldown: 0,
       sonarActive: false,
       speed: ups.speed,
@@ -88,19 +98,19 @@ export function createInitialState(progress?: PlayerProgress): GameState {
     particles: [],
     sonarPings: [],
     projectiles: [],
-    camera: { x: 0, y: 50 },
+    camera: { x: startPos.x, y: Math.max(50, startPos.y) },
     worldWidth: WORLD_WIDTH,
     score: 0,
-    coins: 0,
-    xpEarned: 0,
+    coins: checkpoint?.coins ?? 0,
+    xpEarned: checkpoint?.xpEarned ?? 0,
     time: 0,
     paused: false,
     gameOver: false,
-    currentZone: 'sunlight',
-    deepestDepth: 0,
+    currentZone: getZoneAtDepth(checkpointDepth),
+    deepestDepth: checkpointDepth,
     resources: { coral: 0, metal: 0, crystal: 0, organism: 0, artifact: 0 },
-    killCount: {},
-    bossesDefeated: [],
+    killCount: checkpoint?.killCount ? { ...checkpoint.killCount } : {},
+    bossesDefeated: checkpoint?.bossesDefeated ? [...checkpoint.bossesDefeated] : [],
     generatedDepth: initialGenDepth,
   };
 }
