@@ -128,13 +128,14 @@ const HUD: React.FC<HUDProps> = ({
           </div>
         </div>
         <div className="flex flex-col items-center gap-0.5">
-          <span className="text-xs" style={{ color: '#4a5a64', fontSize: '8px' }}>
+            <span className="text-xs" style={{ color: '#4a5a64', fontSize: '8px' }}>
             {weaponLabels[activeWeapon] || activeWeapon.toUpperCase()}
           </span>
           <span className="text-xs font-bold" style={{ color: ammo > 3 ? '#b4c5cf' : '#ff4500', fontSize: '11px' }}>
             {ammo}/{maxAmmo}
           </span>
           <span className="text-xs" style={{ color: '#3a4a54', fontSize: '7px' }}>[R] RELOAD</span>
+          <span className="text-xs" style={{ color: '#3a4a54', fontSize: '7px' }}>AIM = SUB FACING</span>
           {weaponCount > 1 && (
             <span className="text-xs" style={{ color: '#3a4a54', fontSize: '7px' }}>[Q] SWITCH</span>
           )}
@@ -145,7 +146,7 @@ const HUD: React.FC<HUDProps> = ({
       <div className="absolute right-0 bottom-12 px-2 py-1" style={{ opacity: 0.4 }}>
         <div className="flex flex-col gap-0.5 text-right" style={{ color: '#3a4a54', fontSize: '7px' }}>
           <span>WASD MOVE</span>
-          <span>MOUSE AIM</span>
+          <span>FACE TO AIM</span>
           <span>CLICK/SPACE FIRE</span>
           <span>ESC PAUSE</span>
         </div>
@@ -199,7 +200,7 @@ const HUD: React.FC<HUDProps> = ({
           <h1 className="text-xl font-bold" style={{ color: '#b4c5cf' }}>
             SYSTEMS PAUSED
           </h1>
-          <p className="text-xs mt-1 mb-1" style={{ color: '#00ff88' }}>PROGRESS SAVED</p>
+          <p className="text-xs mt-1 mb-1" style={{ color: '#00ff88' }}>CHECKPOINT SAVED TO CLOUD</p>
           <p className="text-xs mb-4" style={{ color: '#4a5a64' }}>
             ESC TO RESUME
           </p>

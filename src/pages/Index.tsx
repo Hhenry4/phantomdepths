@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { GameScreen, PlayerProgress, WeaponType, getLevelFromXp } from '../game/types';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { GameScreen, PlayerProgress, RunCheckpoint, WeaponType, getLevelFromXp } from '../game/types';
 import { QUESTS, UPGRADES, WEAPON_SHOP } from '../game/constants';
 import GameCanvas from '../game/components/GameCanvas';
 import HomeScreen from '../game/components/HomeScreen';
@@ -20,6 +20,7 @@ function defaultProgress(): PlayerProgress {
     xp: 0,
     level: 1,
     weaponsOwned: ['harpoon'],
+    runCheckpoint: undefined,
   };
 }
 
@@ -30,6 +31,7 @@ const Index: React.FC = () => {
   const [multiplayerRoomId, setMultiplayerRoomId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const { user } = useAuth();
+  const progressRef = useRef<PlayerProgress>(defaultProgress());
 
   // Load from Firestore on login
   useEffect(() => {
@@ -49,10 +51,15 @@ const Index: React.FC = () => {
     }
   }, [user, loaded]);
 
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
+
   const persistProgress = useCallback((next: PlayerProgress) => {
-    if (user) {
-      saveProgressToCloud(user.uid, next);
-    }
+    if (!user) return;
+    saveProgressToCloud(user.uid, next).catch((err) => {
+      console.error('Persist failed:', err);
+    });
   }, [user]);
 
   const handleGameEnd = useCallback((coins: number, deepest: number, kills: number, killCount: Record<string, number>, bossesDefeated: string[], xpEarned: number) => {
@@ -64,6 +71,7 @@ const Index: React.FC = () => {
         totalKills: prev.totalKills + kills,
         xp: prev.xp + xpEarned,
         level: getLevelFromXp(prev.xp + xpEarned),
+        runCheckpoint: undefined,
       };
 
       // Quest checks
@@ -137,6 +145,19 @@ const Index: React.FC = () => {
     });
   }, [persistProgress]);
 
+  const handleCheckpointSave = useCallback((checkpoint: RunCheckpoint) => {
+    if (!user) return;
+
+    const next: PlayerProgress = {
+      ...progressRef.current,
+      runCheckpoint: checkpoint,
+    };
+
+    saveProgressToCloud(user.uid, next).catch((err) => {
+      console.error('Checkpoint persist failed:', err);
+    });
+  }, [user]);
+
   const handleTutorialDone = useCallback(() => {
     setShowTutorial(false);
   }, []);
@@ -184,6 +205,7 @@ const Index: React.FC = () => {
             setScreen('home');
           }}
           multiplayerRoomId={multiplayerRoomId}
+          onCheckpointSave={handleCheckpointSave}
         />
       );
   }

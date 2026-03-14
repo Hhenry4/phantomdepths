@@ -38,8 +38,12 @@ let terrainSeed = Date.now();
 
 export function createInitialState(progress?: PlayerProgress): GameState {
   terrainSeed = Date.now();
-  const initialGenDepth = 2000;
+
+  const checkpoint = progress?.runCheckpoint;
+  const checkpointDepth = Math.max(0, checkpoint?.depth ?? checkpoint?.position?.y ?? 0);
+  const initialGenDepth = Math.max(2000, checkpointDepth + TERRAIN_CHUNK_SIZE);
   const terrain = generateTerrain(terrainSeed, initialGenDepth);
+
   const ups = progress ? applyUpgrades(progress) : {
     maxHull: 100, maxOxygen: 100, maxPower: 100,
     speed: 1, harpoonDamage: HARPOON_BASE_DAMAGE, maxAmmo: 20,
@@ -60,24 +64,30 @@ export function createInitialState(progress?: PlayerProgress): GameState {
     };
   });
 
+  const activeWeaponIndex = Math.max(0, weapons.findIndex(w => w.type === progress?.equippedWeapon));
+  const startPos = checkpoint?.position ?? { x: 0, y: 50 };
+  const startVel = checkpoint?.velocity ?? { x: 0, y: 0 };
+  const startRotation = checkpoint?.rotation ?? Math.PI / 2;
+  const startAim = checkpoint?.aimAngle ?? startRotation;
+
   return {
     sub: {
-      pos: { x: 0, y: 50 },
-      vel: { x: 0, y: 0 },
-      rotation: Math.PI / 2,
-      aimAngle: Math.PI / 2,
+      pos: { ...startPos },
+      vel: { ...startVel },
+      rotation: startRotation,
+      aimAngle: startAim,
       thrust: 0,
-      hull: ups.maxHull,
+      hull: Math.min(ups.maxHull, Math.max(1, checkpoint?.hull ?? ups.maxHull)),
       maxHull: ups.maxHull,
-      power: ups.maxPower,
+      power: Math.min(ups.maxPower, Math.max(0, checkpoint?.power ?? ups.maxPower)),
       maxPower: ups.maxPower,
-      oxygen: ups.maxOxygen,
+      oxygen: Math.min(ups.maxOxygen, Math.max(1, checkpoint?.oxygen ?? ups.maxOxygen)),
       maxOxygen: ups.maxOxygen,
-      depth: 0,
+      depth: checkpointDepth,
       engineNoise: 0,
       lightOn: true,
       weapons,
-      activeWeaponIndex: 0,
+      activeWeaponIndex,
       sonarCooldown: 0,
       sonarActive: false,
       speed: ups.speed,
@@ -88,19 +98,19 @@ export function createInitialState(progress?: PlayerProgress): GameState {
     particles: [],
     sonarPings: [],
     projectiles: [],
-    camera: { x: 0, y: 50 },
+    camera: { x: startPos.x, y: Math.max(50, startPos.y) },
     worldWidth: WORLD_WIDTH,
     score: 0,
-    coins: 0,
-    xpEarned: 0,
+    coins: checkpoint?.coins ?? 0,
+    xpEarned: checkpoint?.xpEarned ?? 0,
     time: 0,
     paused: false,
     gameOver: false,
-    currentZone: 'sunlight',
-    deepestDepth: 0,
+    currentZone: getZoneAtDepth(checkpointDepth),
+    deepestDepth: checkpointDepth,
     resources: { coral: 0, metal: 0, crystal: 0, organism: 0, artifact: 0 },
-    killCount: {},
-    bossesDefeated: [],
+    killCount: checkpoint?.killCount ? { ...checkpoint.killCount } : {},
+    bossesDefeated: checkpoint?.bossesDefeated ? [...checkpoint.bossesDefeated] : [],
     generatedDepth: initialGenDepth,
   };
 }
@@ -128,16 +138,8 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
     );
   }
 
-  // --- Mouse-based aiming ---
-  if (canvasW && canvasH) {
-    const screenCenterX = canvasW / 2;
-    const screenCenterY = canvasH / 2;
-    const dx = input.mouseX - screenCenterX;
-    const dy = input.mouseY - screenCenterY;
-    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-      sub.aimAngle = Math.atan2(dy, dx);
-    }
-  }
+  // Aiming always follows submarine facing direction
+  // (facing is resolved from current movement/rotation below).
 
   // --- Direct WASD movement ---
   let thrusting = false;
@@ -156,6 +158,17 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     sub.rotation += diff * 0.1;
+  }
+
+  sub.aimAngle = sub.rotation;
+
+  // Keep depth values stable before any collisions
+  sub.depth = Math.max(0, sub.pos.y);
+
+  // Clamp to ocean surface only
+  if (sub.pos.y < 0) {
+    sub.pos.y = 0;
+    sub.vel.y = 0;
   }
 
   // Toggle light
@@ -194,7 +207,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
     sub.engineNoise = Math.min(sub.engineNoise + 0.3, 1);
   }
 
-  // Weapon fire — uses aimAngle (mouse) for direction, fires on SPACE or left click
+  // Weapon fire uses facing direction, fires on SPACE or left click
   const activeWeapon = sub.weapons[sub.activeWeaponIndex];
   const wantFire = input.isDown(' ') || input.wasPressed(' ') || input.mouseDown || input.mouseJustPressed;
   if (activeWeapon && wantFire && activeWeapon.ammo > 0 && activeWeapon.cooldown <= 0) {
@@ -342,23 +355,12 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
 
   sub.pos.x += sub.vel.x;
   sub.pos.y += sub.vel.y;
-  if (sub.pos.y < 0) { sub.pos.y = 0; sub.vel.y = 0; }
 
-  // Terrain collision
-  const terrainIdx = Math.floor(sub.pos.y / 20);
-  if (terrainIdx >= 0 && terrainIdx < state.terrain.left.length) {
-    const leftWall = state.terrain.left[terrainIdx].x;
-    const rightWall = state.terrain.right[terrainIdx].x;
-    if (sub.pos.x < leftWall + 35) {
-      sub.pos.x = leftWall + 35;
-      sub.vel.x = Math.abs(sub.vel.x) * 0.3;
-      sub.hull -= 1;
-    }
-    if (sub.pos.x > rightWall - 35) {
-      sub.pos.x = rightWall - 35;
-      sub.vel.x = -Math.abs(sub.vel.x) * 0.3;
-      sub.hull -= 1;
-    }
+  // Infinite horizontal ocean and infinite vertical generation.
+  // No hard side walls: terrain is now environmental, not a movement clamp.
+  if (sub.pos.y < 0) {
+    sub.pos.y = 0;
+    sub.vel.y = 0;
   }
 
   // Depth
@@ -591,7 +593,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   // Remove dead/distant
   state.creatures = state.creatures.filter(c => {
     const dist = Math.sqrt((c.pos.x - sub.pos.x) ** 2 + (c.pos.y - sub.pos.y) ** 2);
-    return c.health > 0 && dist < 2500;
+    return c.health > 0 && dist < 3400;
   });
 
   // Sonar pings
@@ -646,20 +648,23 @@ export function resetBossTracker() {
 }
 
 function updateCreatureSpawning(state: GameState) {
-  // Reduced spawn frequency for less mob overload
-  if (state.time % 150 === 0) {
-    const newCreatures = spawnCreaturesForDepth(state.sub.depth, state.worldWidth);
+  // Denser spawn cadence with depth scaling
+  if (state.time % 95 === 0) {
+    const densityMultiplier = 1 + Math.min(1.2, state.sub.depth / 6000);
+    const newCreatures = spawnCreaturesForDepth(state.sub.depth, state.worldWidth * densityMultiplier);
+
     for (const c of newCreatures) {
-      c.pos.x += state.sub.pos.x;
-      c.pos.y = state.sub.pos.y + (Math.random() - 0.5) * 800;
+      c.pos.x += state.sub.pos.x + (Math.random() - 0.5) * 1200;
+      c.pos.y = state.sub.pos.y + (Math.random() - 0.5) * 1000;
       c.patrolCenter = { ...c.pos };
     }
+
     state.creatures.push(...newCreatures);
-    // Cap creatures
-    if (state.creatures.length > 25) {
-      // Keep bosses, remove oldest non-bosses
+
+    const maxCreatures = 42;
+    if (state.creatures.length > maxCreatures) {
       const bosses = state.creatures.filter(c => c.isBoss);
-      const nonBosses = state.creatures.filter(c => !c.isBoss).slice(-20);
+      const nonBosses = state.creatures.filter(c => !c.isBoss).slice(-(maxCreatures - bosses.length));
       state.creatures = [...bosses, ...nonBosses];
     }
   }

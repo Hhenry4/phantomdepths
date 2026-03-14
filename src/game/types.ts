@@ -146,6 +146,22 @@ export interface ZoneConfig {
   terrainDensity: number;
 }
 
+export interface RunCheckpoint {
+  position: Vec2;
+  velocity: Vec2;
+  rotation: number;
+  aimAngle: number;
+  depth: number;
+  hull: number;
+  power: number;
+  oxygen: number;
+  coins: number;
+  xpEarned: number;
+  killCount: Record<string, number>;
+  bossesDefeated: string[];
+  savedAt: number;
+}
+
 export interface PlayerProgress {
   coins: number;
   upgrades: Record<string, number>;
@@ -157,6 +173,7 @@ export interface PlayerProgress {
   level: number;
   weaponsOwned: WeaponType[];
   equippedWeapon?: WeaponType;
+  runCheckpoint?: RunCheckpoint;
 }
 
 export interface Upgrade {

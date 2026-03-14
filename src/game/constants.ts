@@ -11,8 +11,8 @@ export const SUB_ROTATION_SPEED = 0.04;
 export const SUB_DRAG = 0.96;
 export const SUB_GRAVITY = 0.008;
 
-export const WORLD_WIDTH = 3000;
-export const MAX_DEPTH = 99999; // Infinite - terrain generates as you go
+export const WORLD_WIDTH = 4200;
+export const MAX_DEPTH = Number.MAX_SAFE_INTEGER; // Practically infinite
 
 export const LIGHT_RADIUS_BASE = 250;
 export const SONAR_MAX_RADIUS = 600;
@@ -47,7 +47,7 @@ export const DEPTH_ZONES: ZoneConfig[] = [
     visibility: 1.5,
     ambientLight: 0.7,
     creatureTypes: ['fish', 'jellyfish'],
-    creatureDensity: 0.15,
+    creatureDensity: 0.18,
     pressureDamage: 0,
     terrainDensity: 0.3,
   },
@@ -60,7 +60,7 @@ export const DEPTH_ZONES: ZoneConfig[] = [
     visibility: 1.0,
     ambientLight: 0.3,
     creatureTypes: ['fish', 'jellyfish', 'angler', 'eel'],
-    creatureDensity: 0.25,
+    creatureDensity: 0.3,
     pressureDamage: 0,
     terrainDensity: 0.5,
   },
@@ -73,7 +73,7 @@ export const DEPTH_ZONES: ZoneConfig[] = [
     visibility: 0.6,
     ambientLight: 0.05,
     creatureTypes: ['angler', 'eel', 'squid', 'serpent'],
-    creatureDensity: 0.3,
+    creatureDensity: 0.35,
     pressureDamage: 0.02,
     terrainDensity: 0.7,
   },
@@ -86,7 +86,7 @@ export const DEPTH_ZONES: ZoneConfig[] = [
     visibility: 0.3,
     ambientLight: 0.01,
     creatureTypes: ['squid', 'serpent', 'leviathan', 'phantom'],
-    creatureDensity: 0.2,
+    creatureDensity: 0.28,
     pressureDamage: 0.06,
     terrainDensity: 0.8,
   },
@@ -94,12 +94,12 @@ export const DEPTH_ZONES: ZoneConfig[] = [
     name: 'Hadal Trench',
     zone: 'hadal',
     minDepth: 6000,
-    maxDepth: 99999,
+    maxDepth: Number.MAX_SAFE_INTEGER,
     waterColor: '#000408',
     visibility: 0.15,
     ambientLight: 0,
     creatureTypes: ['leviathan', 'serpent', 'phantom'],
-    creatureDensity: 0.12,
+    creatureDensity: 0.24,
     pressureDamage: 0.12,
     terrainDensity: 0.9,
   },

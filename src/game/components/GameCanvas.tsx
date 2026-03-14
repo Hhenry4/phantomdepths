@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { InputManager } from '../engine/Input';
 import { createInitialState, resetBossTracker, updateGame } from '../engine/GameLoop';
 import { render } from '../engine/Renderer';
-import { GameState, PlayerProgress } from '../types';
+import { GameState, PlayerProgress, RunCheckpoint } from '../types';
 import HUD from './HUD';
 import { useAuth } from '../../firebase/AuthContext';
 import { updatePlayerData, subscribeToRoom, leaveRoom } from '../../firebase/multiplayer';
@@ -11,7 +11,7 @@ import {
   resumeAudio, playHarpoonSound, playTorpedoSound, playPlasmaSound,
   playShockSound, playSonarPing, playDamageSound, playChestSound,
   playFlakSound, playCryoSound, playRailgunSound, playVortexSound,
-  playReloadSound, updateEngineHum, stopEngine, playExplosionSound
+  playReloadSound, updateEngineHum, stopEngine
 } from '../engine/Audio';
 
 interface GameCanvasProps {
@@ -19,9 +19,10 @@ interface GameCanvasProps {
   onGameEnd: (coins: number, deepest: number, kills: number, killCount: Record<string, number>, bossesDefeated: string[], xpEarned: number) => void;
   onReturnToBase: () => void;
   multiplayerRoomId?: string | null;
+  onCheckpointSave?: (checkpoint: RunCheckpoint) => void;
 }
 
-const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnToBase, multiplayerRoomId }) => {
+const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnToBase, multiplayerRoomId, onCheckpointSave }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<GameState | null>(null);
   const inputRef = useRef<InputManager | null>(null);
@@ -48,6 +49,27 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
     prevHullRef.current = stateRef.current.sub.hull;
     prevCoinsRef.current = 0;
   }, [progress]);
+
+  const buildCheckpoint = useCallback((state: GameState): RunCheckpoint => ({
+    position: { ...state.sub.pos },
+    velocity: { ...state.sub.vel },
+    rotation: state.sub.rotation,
+    aimAngle: state.sub.aimAngle,
+    depth: state.sub.depth,
+    hull: state.sub.hull,
+    power: state.sub.power,
+    oxygen: state.sub.oxygen,
+    coins: state.coins,
+    xpEarned: state.xpEarned,
+    killCount: { ...state.killCount },
+    bossesDefeated: [...state.bossesDefeated],
+    savedAt: Date.now(),
+  }), []);
+
+  const saveCheckpoint = useCallback((state: GameState) => {
+    if (!user || !onCheckpointSave) return;
+    onCheckpointSave(buildCheckpoint(state));
+  }, [buildCheckpoint, onCheckpointSave, user]);
 
   useEffect(() => { initGame(); }, [initGame]);
 
@@ -104,7 +126,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
     if (!canvas || !ctx || !inputRef.current || !state) return;
 
     if (inputRef.current.wasPressed('Escape')) {
+      const wasPaused = state.paused;
       state.paused = !state.paused;
+      if (!wasPaused && state.paused) {
+        saveCheckpoint(state);
+      }
     }
 
     // Resume audio on any interaction
@@ -177,12 +203,16 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
     const lightLevel = progress.upgrades.light || 0;
     render(ctx, state, canvas.width, canvas.height, otherPlayersRef.current, lightLevel);
 
+    if (!state.paused && !state.gameOver && state.time % 600 === 0) {
+      saveCheckpoint(state);
+    }
+
     if (state.time % 3 === 0 || state.gameOver || state.paused) {
       updateHud(state);
     }
 
     animFrameRef.current = requestAnimationFrame(gameLoop);
-  }, [updateHud, multiplayerRoomId, user, progress]);
+  }, [updateHud, multiplayerRoomId, user, progress, saveCheckpoint]);
 
   const endGame = useCallback((state: GameState) => {
     const totalKills = Object.values(state.killCount).reduce((a, b) => a + b, 0);
@@ -213,18 +243,16 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
       return () => {
         window.removeEventListener('resize', resize);
         cancelAnimationFrame(animFrameRef.current);
+        if (stateRef.current && !stateRef.current.gameOver) {
+          saveCheckpoint(stateRef.current);
+        }
         inputRef.current?.destroy();
         stopEngine();
       };
     }
   }, [gameLoop]);
 
-  // Auto-save on pause
-  useEffect(() => {
-    if (hudState.paused && stateRef.current) {
-      endGame(stateRef.current);
-    }
-  }, [hudState.paused, endGame]);
+  // Checkpoints are written on pause, periodic intervals, and unmount.
 
   return (
     <div className="relative w-full h-screen overflow-hidden" style={{ background: '#010810', cursor: 'crosshair' }}>

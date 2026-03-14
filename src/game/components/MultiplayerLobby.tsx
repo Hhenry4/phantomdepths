@@ -21,6 +21,8 @@ const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onStartMultiplayer,
   const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu');
   const [roomCode, setRoomCode] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
+  const [createdRoomId, setCreatedRoomId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -28,17 +30,32 @@ const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onStartMultiplayer,
 
   const handleCreate = async () => {
     if (!user) return;
+
     setLoading(true);
     setError('');
+
     try {
-      const code = generateRoomCode();
-      const roomId = await createRoom(user.uid, displayName, code);
-      setGeneratedCode(code);
-      // Store mapping: code -> roomId in the room itself
-      onStartMultiplayer(roomId);
+      let roomId: string | null = null;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const code = generateRoomCode();
+        try {
+          roomId = await createRoom(user.uid, displayName, code);
+          break;
+        } catch {
+          // try another code if collision
+        }
+      }
+
+      if (!roomId) {
+        throw new Error('Could not generate unique room code');
+      }
+
+      setGeneratedCode(roomId);
+      setCreatedRoomId(roomId);
     } catch (e) {
       setError('Failed to create room');
     }
+
     setLoading(false);
   };
 
@@ -47,7 +64,7 @@ const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onStartMultiplayer,
     setLoading(true);
     setError('');
     try {
-      const success = await joinRoom(roomCode.trim().toUpperCase(), roomCode.trim().toUpperCase(), user.uid, displayName);
+      const success = await joinRoom(roomCode.trim().toUpperCase(), user.uid, displayName);
       if (success) {
         onStartMultiplayer(roomCode.trim().toUpperCase());
       } else {
@@ -57,6 +74,17 @@ const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onStartMultiplayer,
       setError('Failed to join room');
     }
     setLoading(false);
+  };
+
+  const handleCopyCode = async () => {
+    if (!generatedCode) return;
+    try {
+      await navigator.clipboard.writeText(generatedCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setError('Could not copy code');
+    }
   };
 
   if (!user) {
@@ -110,17 +138,46 @@ const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onStartMultiplayer,
             </div>
           )}
           {error && <p className="text-xs" style={{ color: '#ff4500' }}>{error}</p>}
-          {!generatedCode && (
+          {!generatedCode ? (
             <button
               onClick={handleCreate}
               disabled={loading}
               className="w-full py-2.5 text-xs tracking-widest uppercase border-2 hover:bg-cyan-500/10 transition-all disabled:opacity-30 rounded-lg"
               style={{ color: '#00bfff', borderColor: '#00bfff' }}
             >
-              {loading ? 'CREATING...' : 'CREATE & START'}
+              {loading ? 'CREATING...' : 'CREATE ROOM'}
             </button>
+          ) : (
+            <>
+              <button
+                onClick={handleCopyCode}
+                className="w-full py-2 text-xs tracking-widest uppercase border rounded"
+                style={{ color: '#b4c5cf', borderColor: '#2a3a4a' }}
+              >
+                {copied ? 'COPIED!' : 'COPY CODE'}
+              </button>
+              <button
+                onClick={() => createdRoomId && onStartMultiplayer(createdRoomId)}
+                className="w-full py-2.5 text-xs tracking-widest uppercase border-2 hover:bg-cyan-500/10 transition-all rounded-lg"
+                style={{ color: '#00bfff', borderColor: '#00bfff' }}
+              >
+                START MISSION
+              </button>
+            </>
           )}
-          <button onClick={() => { setMode('menu'); setError(''); setGeneratedCode(''); }} className="text-xs tracking-widest px-3 py-1.5 border rounded" style={{ color: '#4a5a64', borderColor: '#1a2a3a' }}>← BACK</button>
+          <button
+            onClick={() => {
+              setMode('menu');
+              setError('');
+              setGeneratedCode('');
+              setCreatedRoomId(null);
+              setCopied(false);
+            }}
+            className="text-xs tracking-widest px-3 py-1.5 border rounded"
+            style={{ color: '#4a5a64', borderColor: '#1a2a3a' }}
+          >
+            ← BACK
+          </button>
         </div>
       )}
 
