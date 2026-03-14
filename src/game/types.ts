@@ -38,7 +38,7 @@ export interface WeaponSlot {
   cooldown: number;
 }
 
-export type WeaponType = 'harpoon' | 'shock' | 'torpedo' | 'plasma' | 'railgun' | 'flak' | 'cryo' | 'vortex' | 'needle' | 'net' | 'acid' | 'mine' | 'lance' | 'pulse' | 'drill' | 'arc' | 'swarm' | 'nova' | 'siphon' | 'oblivion' | 'leech' | 'rift';
+export type WeaponType = 'harpoon' | 'shock' | 'torpedo' | 'plasma' | 'railgun' | 'flak' | 'cryo' | 'vortex' | 'needle' | 'net' | 'acid' | 'mine' | 'lance' | 'pulse' | 'drill' | 'arc' | 'swarm' | 'nova' | 'siphon' | 'oblivion' | 'leech' | 'rift' | 'trident' | 'kraken' | 'starforge';
 
 export type WeaponTier = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic';
 
