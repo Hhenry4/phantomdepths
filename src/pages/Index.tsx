@@ -198,6 +198,7 @@ const Index: React.FC = () => {
             setScreen('home');
           }}
           multiplayerRoomId={multiplayerRoomId}
+          onCheckpointSave={handleCheckpointSave}
         />
       );
   }
