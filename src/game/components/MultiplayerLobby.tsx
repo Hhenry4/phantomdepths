@@ -30,17 +30,32 @@ const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onStartMultiplayer,
 
   const handleCreate = async () => {
     if (!user) return;
+
     setLoading(true);
     setError('');
+
     try {
-      const code = generateRoomCode();
-      const roomId = await createRoom(user.uid, displayName, code);
-      setGeneratedCode(code);
-      // Store mapping: code -> roomId in the room itself
-      onStartMultiplayer(roomId);
+      let roomId: string | null = null;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const code = generateRoomCode();
+        try {
+          roomId = await createRoom(user.uid, displayName, code);
+          break;
+        } catch {
+          // try another code if collision
+        }
+      }
+
+      if (!roomId) {
+        throw new Error('Could not generate unique room code');
+      }
+
+      setGeneratedCode(roomId);
+      setCreatedRoomId(roomId);
     } catch (e) {
       setError('Failed to create room');
     }
+
     setLoading(false);
   };
 
