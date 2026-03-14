@@ -76,6 +76,17 @@ const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onStartMultiplayer,
     setLoading(false);
   };
 
+  const handleCopyCode = async () => {
+    if (!generatedCode) return;
+    try {
+      await navigator.clipboard.writeText(generatedCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setError('Could not copy code');
+    }
+  };
+
   if (!user) {
     return (
       <div className="w-full h-screen flex items-center justify-center" style={{ background: '#010810', fontFamily: "'IBM Plex Mono', monospace" }}>
