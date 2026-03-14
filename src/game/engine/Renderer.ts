@@ -436,20 +436,7 @@ function drawSubmarine(ctx: CanvasRenderingContext2D, pos: Vec2, rotation: numbe
   ctx.translate(pos.x, pos.y);
   ctx.rotate(rotation);
 
-  // Light cone
-  if (lightOn) {
-    const gradient = ctx.createRadialGradient(SUB_WIDTH / 2, 0, 5, SUB_WIDTH / 2 + 150, 0, 200);
-    gradient.addColorStop(0, 'rgba(180, 220, 255, 0.25)');
-    gradient.addColorStop(1, 'rgba(180, 220, 255, 0)');
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.moveTo(SUB_WIDTH / 2, -5);
-    ctx.lineTo(SUB_WIDTH / 2 + 250, -80);
-    ctx.lineTo(SUB_WIDTH / 2 + 250, 80);
-    ctx.lineTo(SUB_WIDTH / 2, 5);
-    ctx.closePath();
-    ctx.fill();
-  }
+  // No separate light cone — visibility is handled by the darkness overlay
 
   const hullRatio = hull / maxHull;
   const hullColor = hullRatio > 0.6 ? '#b4c5cf' : hullRatio > 0.3 ? '#ff8c00' : '#ff4500';
