@@ -146,15 +146,17 @@ const Index: React.FC = () => {
   }, [persistProgress]);
 
   const handleCheckpointSave = useCallback((checkpoint: RunCheckpoint) => {
-    setProgress((prev) => {
-      const next = {
-        ...prev,
-        runCheckpoint: checkpoint,
-      };
-      persistProgress(next);
-      return next;
+    if (!user) return;
+
+    const next: PlayerProgress = {
+      ...progressRef.current,
+      runCheckpoint: checkpoint,
+    };
+
+    saveProgressToCloud(user.uid, next).catch((err) => {
+      console.error('Checkpoint persist failed:', err);
     });
-  }, [persistProgress]);
+  }, [user]);
 
   const handleTutorialDone = useCallback(() => {
     setShowTutorial(false);
