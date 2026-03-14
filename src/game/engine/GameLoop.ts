@@ -355,23 +355,12 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
 
   sub.pos.x += sub.vel.x;
   sub.pos.y += sub.vel.y;
-  if (sub.pos.y < 0) { sub.pos.y = 0; sub.vel.y = 0; }
 
-  // Terrain collision
-  const terrainIdx = Math.floor(sub.pos.y / 20);
-  if (terrainIdx >= 0 && terrainIdx < state.terrain.left.length) {
-    const leftWall = state.terrain.left[terrainIdx].x;
-    const rightWall = state.terrain.right[terrainIdx].x;
-    if (sub.pos.x < leftWall + 35) {
-      sub.pos.x = leftWall + 35;
-      sub.vel.x = Math.abs(sub.vel.x) * 0.3;
-      sub.hull -= 1;
-    }
-    if (sub.pos.x > rightWall - 35) {
-      sub.pos.x = rightWall - 35;
-      sub.vel.x = -Math.abs(sub.vel.x) * 0.3;
-      sub.hull -= 1;
-    }
+  // Infinite horizontal ocean and infinite vertical generation.
+  // No hard side walls: terrain is now environmental, not a movement clamp.
+  if (sub.pos.y < 0) {
+    sub.pos.y = 0;
+    sub.vel.y = 0;
   }
 
   // Depth
