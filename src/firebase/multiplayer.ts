@@ -21,12 +21,18 @@ export interface PlayerData {
 }
 
 export async function createRoom(hostId: string, hostName: string, roomCode: string): Promise<string> {
-  // Use roomCode as the room key for easy lookup
-  const roomRef = ref(rtdb, `rooms/${roomCode}`);
+  const normalizedCode = roomCode.trim().toUpperCase();
+  const roomRef = ref(rtdb, `rooms/${normalizedCode}`);
+  const existingRoom = await get(roomRef);
+
+  if (existingRoom.exists()) {
+    throw new Error('Room code already exists');
+  }
+
   await set(roomRef, {
     hostName,
     hostId,
-    roomCode,
+    roomCode: normalizedCode,
     createdAt: Date.now(),
     players: {
       [hostId]: {
@@ -40,7 +46,8 @@ export async function createRoom(hostId: string, hostName: string, roomCode: str
       },
     },
   });
-  return roomCode;
+
+  return normalizedCode;
 }
 
 export async function joinRoom(roomCode: string, _password: string, playerId: string, playerName: string): Promise<boolean> {

@@ -138,17 +138,46 @@ const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onStartMultiplayer,
             </div>
           )}
           {error && <p className="text-xs" style={{ color: '#ff4500' }}>{error}</p>}
-          {!generatedCode && (
+          {!generatedCode ? (
             <button
               onClick={handleCreate}
               disabled={loading}
               className="w-full py-2.5 text-xs tracking-widest uppercase border-2 hover:bg-cyan-500/10 transition-all disabled:opacity-30 rounded-lg"
               style={{ color: '#00bfff', borderColor: '#00bfff' }}
             >
-              {loading ? 'CREATING...' : 'CREATE & START'}
+              {loading ? 'CREATING...' : 'CREATE ROOM'}
             </button>
+          ) : (
+            <>
+              <button
+                onClick={handleCopyCode}
+                className="w-full py-2 text-xs tracking-widest uppercase border rounded"
+                style={{ color: '#b4c5cf', borderColor: '#2a3a4a' }}
+              >
+                {copied ? 'COPIED!' : 'COPY CODE'}
+              </button>
+              <button
+                onClick={() => createdRoomId && onStartMultiplayer(createdRoomId)}
+                className="w-full py-2.5 text-xs tracking-widest uppercase border-2 hover:bg-cyan-500/10 transition-all rounded-lg"
+                style={{ color: '#00bfff', borderColor: '#00bfff' }}
+              >
+                START MISSION
+              </button>
+            </>
           )}
-          <button onClick={() => { setMode('menu'); setError(''); setGeneratedCode(''); }} className="text-xs tracking-widest px-3 py-1.5 border rounded" style={{ color: '#4a5a64', borderColor: '#1a2a3a' }}>← BACK</button>
+          <button
+            onClick={() => {
+              setMode('menu');
+              setError('');
+              setGeneratedCode('');
+              setCreatedRoomId(null);
+              setCopied(false);
+            }}
+            className="text-xs tracking-widest px-3 py-1.5 border rounded"
+            style={{ color: '#4a5a64', borderColor: '#1a2a3a' }}
+          >
+            ← BACK
+          </button>
         </div>
       )}
 
