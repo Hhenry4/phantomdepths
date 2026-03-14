@@ -207,7 +207,7 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
     sub.engineNoise = Math.min(sub.engineNoise + 0.3, 1);
   }
 
-  // Weapon fire — uses aimAngle (mouse) for direction, fires on SPACE or left click
+  // Weapon fire uses facing direction, fires on SPACE or left click
   const activeWeapon = sub.weapons[sub.activeWeaponIndex];
   const wantFire = input.isDown(' ') || input.wasPressed(' ') || input.mouseDown || input.mouseJustPressed;
   if (activeWeapon && wantFire && activeWeapon.ammo > 0 && activeWeapon.cooldown <= 0) {
