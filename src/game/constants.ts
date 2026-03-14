@@ -5,8 +5,8 @@ export const CANVAS_HEIGHT = 800;
 
 export const SUB_WIDTH = 60;
 export const SUB_HEIGHT = 24;
-export const SUB_MAX_SPEED = 3.5;
-export const SUB_THRUST = 0.22;
+export const SUB_MAX_SPEED = 5.5;
+export const SUB_THRUST = 0.38;
 export const SUB_ROTATION_SPEED = 0.04;
 export const SUB_DRAG = 0.96;
 export const SUB_GRAVITY = 0.008;

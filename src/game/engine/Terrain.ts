@@ -119,22 +119,22 @@ function generateTerrainChunk(
       const featureX = leftX + passageWidth * (0.15 + rand() * 0.7);
 
       if (depth < 300) {
-        // Shallow: kelp forests, rock formations
-        const ft = rand() < 0.5 ? 'kelp' : 'rock_formation';
+        // Shallow: kelp forests, coral
+        const ft = rand() < 0.6 ? 'kelp' : 'wreck';
         features.push({
           pos: { x: featureX, y },
           type: ft as TerrainFeature['type'],
           size: 15 + rand() * 25,
-          color: ft === 'kelp' ? '#2d5a27' : '#4a5568',
+          color: ft === 'kelp' ? '#2d5a27' : '#4a6a7a',
         });
       } else if (depth < 1500) {
-        // Mid depth: wrecks, rock formations
-        const ft = rand() < 0.4 ? 'wreck' : 'rock_formation';
+        // Mid depth: wrecks, caves
+        const ft = rand() < 0.4 ? 'wreck' : 'cave';
         features.push({
           pos: { x: featureX, y },
           type: ft as TerrainFeature['type'],
           size: 20 + rand() * 35,
-          color: ft === 'wreck' ? '#4a6a7a' : '#3a4a58',
+          color: ft === 'wreck' ? '#4a6a7a' : '#0a1520',
         });
       } else {
         // Deep: ruins, caves

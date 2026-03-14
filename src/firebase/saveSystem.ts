@@ -46,21 +46,75 @@ function normalizeProgress(data: any): PlayerProgress {
   };
 }
 
-export async function saveProgressToCloud(userId: string, progress: PlayerProgress): Promise<void> {
-  if (!userId) return;
+// Sanitize data to remove undefined values (Firestore rejects them)
+function sanitize(obj: any): any {
+  if (obj === null || obj === undefined) return null;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sanitize);
+  const clean: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      clean[key] = sanitize(value);
+    }
+  }
+  return clean;
+}
 
-  const payload = {
-    ...progress,
+export async function saveProgressToCloud(userId: string, progress: PlayerProgress): Promise<void> {
+  if (!userId) {
+    console.warn('[SaveSystem] No userId, skipping save');
+    return;
+  }
+
+  const payload = sanitize({
+    coins: progress.coins,
+    upgrades: progress.upgrades,
+    deepestEver: progress.deepestEver,
+    totalKills: progress.totalKills,
+    questsCompleted: progress.questsCompleted,
+    unlockedZones: progress.unlockedZones,
+    xp: progress.xp,
+    level: progress.level,
+    weaponsOwned: progress.weaponsOwned,
+    equippedWeapon: progress.equippedWeapon || null,
+    runCheckpoint: progress.runCheckpoint ? {
+      position: { x: progress.runCheckpoint.position.x, y: progress.runCheckpoint.position.y },
+      velocity: { x: progress.runCheckpoint.velocity.x, y: progress.runCheckpoint.velocity.y },
+      rotation: progress.runCheckpoint.rotation,
+      aimAngle: progress.runCheckpoint.aimAngle,
+      depth: progress.runCheckpoint.depth,
+      hull: progress.runCheckpoint.hull,
+      power: progress.runCheckpoint.power,
+      oxygen: progress.runCheckpoint.oxygen,
+      coins: progress.runCheckpoint.coins,
+      xpEarned: progress.runCheckpoint.xpEarned,
+      killCount: progress.runCheckpoint.killCount,
+      bossesDefeated: progress.runCheckpoint.bossesDefeated,
+      savedAt: progress.runCheckpoint.savedAt,
+    } : null,
     lastSaved: Date.now(),
-  };
+  });
+
+  console.log('[SaveSystem] Saving to Firestore for user:', userId, 'coins:', payload.coins, 'depth:', payload.deepestEver);
 
   try {
+    // Save to both collections for redundancy
+    const primaryRef = doc(db, PRIMARY_COLLECTION, userId);
+    const fallbackRef = doc(db, FALLBACK_COLLECTION, userId);
+    
     await Promise.all([
-      setDoc(doc(db, PRIMARY_COLLECTION, userId), payload, { merge: true }),
-      setDoc(doc(db, FALLBACK_COLLECTION, userId), payload, { merge: true }),
+      setDoc(primaryRef, payload, { merge: true }).then(() => {
+        console.log('[SaveSystem] ✅ Primary save success');
+      }),
+      setDoc(fallbackRef, payload, { merge: true }).then(() => {
+        console.log('[SaveSystem] ✅ Fallback save success');
+      }),
     ]);
-  } catch (err) {
-    console.error('Cloud save failed:', err);
+    
+    console.log('[SaveSystem] ✅ All saves completed successfully');
+  } catch (err: any) {
+    console.error('[SaveSystem] ❌ Cloud save failed:', err?.message || err);
+    console.error('[SaveSystem] Error code:', err?.code);
     throw err;
   }
 }
@@ -68,18 +122,25 @@ export async function saveProgressToCloud(userId: string, progress: PlayerProgre
 export async function loadProgressFromCloud(userId: string): Promise<PlayerProgress | null> {
   if (!userId) return null;
 
+  console.log('[SaveSystem] Loading from Firestore for user:', userId);
+
   try {
     const primarySnap = await getDoc(doc(db, PRIMARY_COLLECTION, userId));
     if (primarySnap.exists()) {
+      console.log('[SaveSystem] ✅ Loaded from primary collection');
       return normalizeProgress(primarySnap.data());
     }
 
     const fallbackSnap = await getDoc(doc(db, FALLBACK_COLLECTION, userId));
     if (fallbackSnap.exists()) {
+      console.log('[SaveSystem] ✅ Loaded from fallback collection');
       return normalizeProgress(fallbackSnap.data());
     }
-  } catch (err) {
-    console.error('Cloud load failed:', err);
+    
+    console.log('[SaveSystem] No existing save found for user');
+  } catch (err: any) {
+    console.error('[SaveSystem] ❌ Cloud load failed:', err?.message || err);
+    console.error('[SaveSystem] Error code:', err?.code);
   }
 
   return null;
