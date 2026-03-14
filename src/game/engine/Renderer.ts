@@ -82,33 +82,67 @@ function drawCurrents(ctx: CanvasRenderingContext2D, state: GameState, cw: numbe
 
 function drawWaterSurface(ctx: CanvasRenderingContext2D, camera: Vec2, canvasW: number) {
   const viewLeft = camera.x - canvasW;
-  const viewWidth = canvasW * 2;
+  const viewWidth = canvasW * 3;
+  const t = Date.now() * 0.001;
 
-  // Soft bright layer above sea level to make the surface visible
-  const surfaceGlow = ctx.createLinearGradient(0, -220, 0, 0);
-  surfaceGlow.addColorStop(0, 'rgba(148, 205, 235, 0.16)');
-  surfaceGlow.addColorStop(1, 'rgba(148, 205, 235, 0.02)');
-  ctx.fillStyle = surfaceGlow;
-  ctx.fillRect(viewLeft, -220, viewWidth, 220);
+  // Sky / above-water fill — solid block so you can't see past it
+  const skyGrad = ctx.createLinearGradient(0, -600, 0, -5);
+  skyGrad.addColorStop(0, '#87ceeb');
+  skyGrad.addColorStop(0.6, '#b4dff0');
+  skyGrad.addColorStop(1, '#d4eff8');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(viewLeft, -2000, viewWidth, 2000);
 
-  // Surface line (top of water)
-  ctx.strokeStyle = 'rgba(120, 210, 255, 0.9)';
+  // Wavy surface edge
+  ctx.beginPath();
+  ctx.moveTo(viewLeft, 10);
+  for (let x = viewLeft; x <= viewLeft + viewWidth; x += 8) {
+    const waveY = Math.sin(x * 0.015 + t * 1.5) * 3 + Math.sin(x * 0.03 + t * 2.2) * 1.5;
+    ctx.lineTo(x, waveY);
+  }
+  ctx.lineTo(viewLeft + viewWidth, -2000);
+  ctx.lineTo(viewLeft, -2000);
+  ctx.closePath();
+  ctx.fillStyle = '#d4eff8';
+  ctx.fill();
+
+  // Sun reflection shimmer on surface
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(viewLeft, 0);
-  ctx.lineTo(viewLeft + viewWidth, 0);
-  ctx.stroke();
-
-  // Foam shimmer
-  ctx.strokeStyle = 'rgba(160, 225, 255, 0.28)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let x = viewLeft; x <= viewLeft + viewWidth; x += 20) {
-    const y = Math.sin((x + Date.now() * 0.08) * 0.02) * 2;
-    if (x === viewLeft) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
+  for (let x = viewLeft; x <= viewLeft + viewWidth; x += 8) {
+    const waveY = Math.sin(x * 0.015 + t * 1.5) * 3 + Math.sin(x * 0.03 + t * 2.2) * 1.5;
+    if (x === viewLeft) ctx.moveTo(x, waveY);
+    else ctx.lineTo(x, waveY);
   }
   ctx.stroke();
+
+  // Foam/froth highlights
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = '#ffffff';
+  for (let x = viewLeft; x <= viewLeft + viewWidth; x += 60) {
+    const waveY = Math.sin(x * 0.015 + t * 1.5) * 3;
+    const foamW = 15 + Math.sin(x * 0.1 + t) * 8;
+    ctx.beginPath();
+    ctx.ellipse(x, waveY + 1, foamW, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Light rays from surface into water
+  ctx.globalAlpha = 0.04;
+  ctx.fillStyle = '#87ceeb';
+  for (let i = 0; i < 6; i++) {
+    const rx = viewLeft + (i + 0.5) * (viewWidth / 6) + Math.sin(t + i) * 30;
+    ctx.beginPath();
+    ctx.moveTo(rx - 8, 0);
+    ctx.lineTo(rx + 8, 0);
+    ctx.lineTo(rx + 40 + Math.sin(t * 0.5 + i) * 20, 250);
+    ctx.lineTo(rx - 40 + Math.sin(t * 0.7 + i) * 20, 250);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 }
 
 function drawAimLine(ctx: CanvasRenderingContext2D, pos: Vec2, aimAngle: number) {
