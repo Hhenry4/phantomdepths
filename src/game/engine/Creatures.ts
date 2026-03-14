@@ -195,4 +195,10 @@ export function updateCreature(creature: Creature, subPos: Vec2, dt: number, eng
   creature.vel.y *= 0.98;
   creature.pos.x += creature.vel.x;
   creature.pos.y += creature.vel.y;
+
+  // Clamp creatures to stay below the water surface
+  if (creature.pos.y < 10) {
+    creature.pos.y = 10;
+    creature.vel.y = Math.abs(creature.vel.y) * 0.5;
+  }
 }

@@ -1065,10 +1065,15 @@ function drawDarknessOverlay(
   const darkness = 1 - ambientLight;
   if (darkness <= 0) return;
 
-  const lightRadius = lightOn ? LIGHT_RADIUS_BASE * visibility : LIGHT_RADIUS_BASE * visibility * 0.3;
-  const gradient = ctx.createRadialGradient(cw / 2, ch / 2, lightRadius * 0.3, cw / 2, ch / 2, lightRadius);
+  // Larger light radius and lower max darkness so deep zones are still playable
+  const baseRadius = lightOn ? LIGHT_RADIUS_BASE * visibility * 1.6 : LIGHT_RADIUS_BASE * visibility * 0.5;
+  const lightRadius = Math.max(baseRadius, 180); // Always at least some visibility
+  const maxDarkness = Math.min(darkness * 0.65, 0.7); // Cap darkness so it's never pitch black
+
+  const gradient = ctx.createRadialGradient(cw / 2, ch / 2, lightRadius * 0.4, cw / 2, ch / 2, lightRadius);
   gradient.addColorStop(0, `rgba(0, 0, 0, 0)`);
-  gradient.addColorStop(1, `rgba(0, 0, 0, ${darkness * 0.85})`);
+  gradient.addColorStop(0.7, `rgba(0, 0, 0, ${maxDarkness * 0.3})`);
+  gradient.addColorStop(1, `rgba(0, 0, 0, ${maxDarkness})`);
 
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, cw, ch);

@@ -655,7 +655,7 @@ function updateCreatureSpawning(state: GameState) {
 
     for (const c of newCreatures) {
       c.pos.x += state.sub.pos.x + (Math.random() - 0.5) * 1200;
-      c.pos.y = state.sub.pos.y + (Math.random() - 0.5) * 1000;
+      c.pos.y = Math.max(20, state.sub.pos.y + (Math.random() - 0.5) * 1000);
       c.patrolCenter = { ...c.pos };
     }
 

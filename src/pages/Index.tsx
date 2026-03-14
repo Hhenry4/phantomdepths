@@ -71,7 +71,8 @@ const Index: React.FC = () => {
         totalKills: prev.totalKills + kills,
         xp: prev.xp + xpEarned,
         level: getLevelFromXp(prev.xp + xpEarned),
-        runCheckpoint: undefined,
+        // Keep checkpoint if returning to base; clear only on game over (death)
+        runCheckpoint: prev.runCheckpoint,
       };
 
       // Quest checks
