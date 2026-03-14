@@ -205,9 +205,6 @@ function drawTerrainFeatures(ctx: CanvasRenderingContext2D, features: TerrainFea
       case 'kelp':
         drawKelp(ctx, f);
         break;
-      case 'rock_formation':
-        drawRockFormation(ctx, f);
-        break;
       case 'cave':
         drawCaveEntrance(ctx, f);
         break;
