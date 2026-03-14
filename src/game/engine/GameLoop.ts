@@ -756,20 +756,18 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
   }
 
   // Thrust bubbles
-  if (thrusting) {
-    for (let i = 0; i < 2; i++) {
-      state.particles.push({
-        pos: {
-          x: sub.pos.x - Math.cos(sub.rotation) * 30 + (Math.random() - 0.5) * 10,
-          y: sub.pos.y - Math.sin(sub.rotation) * 30 + (Math.random() - 0.5) * 10,
-        },
-        vel: {
-          x: -Math.cos(sub.rotation) * 2 + (Math.random() - 0.5),
-          y: -Math.sin(sub.rotation) * 2 + (Math.random() - 0.5) - 0.5,
-        },
-        life: 40, maxLife: 40, size: 2 + Math.random() * 3, color: '#b4c5cf', alpha: 0.6, type: 'bubble',
-      });
-    }
+  if (thrusting && state.particles.length < MAX_PARTICLES) {
+    state.particles.push({
+      pos: {
+        x: sub.pos.x - Math.cos(sub.rotation) * 30 + (Math.random() - 0.5) * 10,
+        y: sub.pos.y - Math.sin(sub.rotation) * 30 + (Math.random() - 0.5) * 10,
+      },
+      vel: {
+        x: -Math.cos(sub.rotation) * 2 + (Math.random() - 0.5),
+        y: -Math.sin(sub.rotation) * 2 + (Math.random() - 0.5) - 0.5,
+      },
+      life: 40, maxLife: 40, size: 2 + Math.random() * 3, color: '#b4c5cf', alpha: 0.6, type: 'bubble',
+    });
   }
 
   input.clearFrame();
