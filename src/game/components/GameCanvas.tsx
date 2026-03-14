@@ -19,9 +19,10 @@ interface GameCanvasProps {
   onGameEnd: (coins: number, deepest: number, kills: number, killCount: Record<string, number>, bossesDefeated: string[], xpEarned: number) => void;
   onReturnToBase: () => void;
   multiplayerRoomId?: string | null;
+  onCheckpointSave?: (checkpoint: RunCheckpoint) => void;
 }
 
-const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnToBase, multiplayerRoomId }) => {
+const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnToBase, multiplayerRoomId, onCheckpointSave }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<GameState | null>(null);
   const inputRef = useRef<InputManager | null>(null);
