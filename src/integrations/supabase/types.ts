@@ -40,7 +40,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      load_player_progress: { Args: { p_firebase_uid: string }; Returns: Json }
+      save_player_progress: {
+        Args: { p_firebase_uid: string; p_progress: Json }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
