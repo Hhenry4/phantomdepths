@@ -243,6 +243,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
       return () => {
         window.removeEventListener('resize', resize);
         cancelAnimationFrame(animFrameRef.current);
+        if (stateRef.current && !stateRef.current.gameOver) {
+          saveCheckpoint(stateRef.current);
+        }
         inputRef.current?.destroy();
         stopEngine();
       };
