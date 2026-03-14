@@ -51,9 +51,10 @@ const Index: React.FC = () => {
   }, [user, loaded]);
 
   const persistProgress = useCallback((next: PlayerProgress) => {
-    if (user) {
-      saveProgressToCloud(user.uid, next);
-    }
+    if (!user) return;
+    saveProgressToCloud(user.uid, next).catch((err) => {
+      console.error('Persist failed:', err);
+    });
   }, [user]);
 
   const handleGameEnd = useCallback((coins: number, deepest: number, kills: number, killCount: Record<string, number>, bossesDefeated: string[], xpEarned: number) => {
