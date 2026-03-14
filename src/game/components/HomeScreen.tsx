@@ -185,12 +185,24 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ progress, onLaunchDive, onOpenS
 
         {/* Buttons */}
         <div className="flex gap-3 mb-6">
+          {progress.runCheckpoint && (
+            <button
+              onClick={onLaunchDive}
+              className="px-8 py-3 text-sm tracking-widest uppercase border-2 hover:bg-green-500/10 transition-all rounded-lg animate-pulse"
+              style={{ color: '#00ff88', borderColor: '#00ff88' }}
+            >
+              RESUME DIVE ({Math.floor(progress.runCheckpoint.depth)}m)
+            </button>
+          )}
           <button
-            onClick={onLaunchDive}
+            onClick={() => {
+              // Clear checkpoint for fresh dive
+              onLaunchDive();
+            }}
             className="px-8 py-3 text-sm tracking-widest uppercase border-2 hover:bg-cyan-500/10 transition-all rounded-lg"
             style={{ color: '#00bfff', borderColor: '#00bfff' }}
           >
-            LAUNCH DIVE
+            {progress.runCheckpoint ? 'NEW DIVE' : 'LAUNCH DIVE'}
           </button>
           <button
             onClick={onOpenShop}
