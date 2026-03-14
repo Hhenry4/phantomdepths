@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { GameScreen, PlayerProgress, WeaponType, getLevelFromXp } from '../game/types';
+import { GameScreen, PlayerProgress, RunCheckpoint, WeaponType, getLevelFromXp } from '../game/types';
 import { QUESTS, UPGRADES, WEAPON_SHOP } from '../game/constants';
 import GameCanvas from '../game/components/GameCanvas';
 import HomeScreen from '../game/components/HomeScreen';
