@@ -126,7 +126,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
     if (!canvas || !ctx || !inputRef.current || !state) return;
 
     if (inputRef.current.wasPressed('Escape')) {
+      const wasPaused = state.paused;
       state.paused = !state.paused;
+      if (!wasPaused && state.paused) {
+        saveCheckpoint(state);
+      }
     }
 
     // Resume audio on any interaction
