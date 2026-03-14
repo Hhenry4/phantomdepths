@@ -11,7 +11,7 @@ import {
   resumeAudio, playHarpoonSound, playTorpedoSound, playPlasmaSound,
   playShockSound, playSonarPing, playDamageSound, playChestSound,
   playFlakSound, playCryoSound, playRailgunSound, playVortexSound,
-  playReloadSound, updateEngineHum, stopEngine, playExplosionSound
+  playReloadSound, updateEngineHum, stopEngine
 } from '../engine/Audio';
 
 interface GameCanvasProps {
