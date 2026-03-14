@@ -160,6 +160,17 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
     sub.rotation += diff * 0.1;
   }
 
+  sub.aimAngle = sub.rotation;
+
+  // Keep depth values stable before any collisions
+  sub.depth = Math.max(0, sub.pos.y);
+
+  // Clamp to ocean surface only
+  if (sub.pos.y < 0) {
+    sub.pos.y = 0;
+    sub.vel.y = 0;
+  }
+
   // Toggle light
   if (input.wasPressed('f')) sub.lightOn = !sub.lightOn;
 
