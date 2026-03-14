@@ -726,10 +726,14 @@ export function updateGame(state: GameState, input: InputManager, dt: number, pr
     return p.alpha > 0;
   });
 
-  // Particles
+  // Particles (with cap to prevent memory issues)
   updateParticles(state);
-  if (Math.random() < 0.3) spawnBubble(state);
-  if (sub.depth > 200 && Math.random() < 0.1) spawnBiolum(state);
+  const MAX_PARTICLES = 200;
+  if (state.particles.length > MAX_PARTICLES) {
+    state.particles = state.particles.slice(-MAX_PARTICLES);
+  }
+  if (state.particles.length < MAX_PARTICLES && Math.random() < 0.3) spawnBubble(state);
+  if (state.particles.length < MAX_PARTICLES && sub.depth > 200 && Math.random() < 0.1) spawnBiolum(state);
 
   // Volcanic ambient particles
   if (isVolcanic) {
