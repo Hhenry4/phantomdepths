@@ -52,7 +52,7 @@ export function spawnCreaturesForDepth(depth: number, worldWidth: number): Creat
   if (!zoneConfig) return [];
 
   const creatures: Creature[] = [];
-  const count = Math.floor(zoneConfig.creatureDensity * 4) + (Math.random() < zoneConfig.creatureDensity ? 1 : 0);
+  const count = Math.floor(zoneConfig.creatureDensity * 7) + (Math.random() < zoneConfig.creatureDensity ? 2 : 1);
 
   for (let i = 0; i < count; i++) {
     const type = zoneConfig.creatureTypes[Math.floor(Math.random() * zoneConfig.creatureTypes.length)];
