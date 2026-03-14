@@ -66,6 +66,7 @@ const Index: React.FC = () => {
         totalKills: prev.totalKills + kills,
         xp: prev.xp + xpEarned,
         level: getLevelFromXp(prev.xp + xpEarned),
+        runCheckpoint: undefined,
       };
 
       // Quest checks
