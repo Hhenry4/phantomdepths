@@ -51,6 +51,10 @@ const Index: React.FC = () => {
     }
   }, [user, loaded]);
 
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
+
   const persistProgress = useCallback((next: PlayerProgress) => {
     if (!user) return;
     saveProgressToCloud(user.uid, next).catch((err) => {
