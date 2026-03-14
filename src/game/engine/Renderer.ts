@@ -732,30 +732,7 @@ function drawMinimap(ctx: CanvasRenderingContext2D, state: GameState, canvasW: n
     return mapX + relative * mapW;
   };
 
-  // Terrain (local horizontal window around current submarine position)
-  ctx.strokeStyle = '#2a3a4a';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let i = 0; i < state.terrain.left.length; i += 10) {
-    const p = state.terrain.left[i];
-    const mx = toMapX(p.x);
-    const my = mapY + (p.y / viewRange) * mapH;
-    if (mx > mapX && mx < mapX + mapW && my > mapY && my < mapY + mapH) {
-      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
-    }
-  }
-  ctx.stroke();
-
-  ctx.beginPath();
-  for (let i = 0; i < state.terrain.right.length; i += 10) {
-    const p = state.terrain.right[i];
-    const mx = toMapX(p.x);
-    const my = mapY + (p.y / viewRange) * mapH;
-    if (mx > mapX && mx < mapX + mapW && my > mapY && my < mapY + mapH) {
-      if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
-    }
-  }
-  ctx.stroke();
+  // Intentionally no minimap canyon walls: open-ocean style navigation.
 
   // Creatures
   for (const c of state.creatures) {
