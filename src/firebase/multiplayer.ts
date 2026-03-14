@@ -50,7 +50,7 @@ export async function createRoom(hostId: string, hostName: string, roomCode: str
   return normalizedCode;
 }
 
-export async function joinRoom(roomCode: string, _password: string, playerId: string, playerName: string): Promise<boolean> {
+export async function joinRoom(roomCode: string, playerId: string, playerName: string): Promise<boolean> {
   const roomRef = ref(rtdb, `rooms/${roomCode}`);
   const snap = await get(roomRef);
   if (!snap.exists()) return false;

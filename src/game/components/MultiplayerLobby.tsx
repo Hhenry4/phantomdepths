@@ -64,7 +64,7 @@ const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({ onStartMultiplayer,
     setLoading(true);
     setError('');
     try {
-      const success = await joinRoom(roomCode.trim().toUpperCase(), roomCode.trim().toUpperCase(), user.uid, displayName);
+      const success = await joinRoom(roomCode.trim().toUpperCase(), user.uid, displayName);
       if (success) {
         onStartMultiplayer(roomCode.trim().toUpperCase());
       } else {
