@@ -27,7 +27,7 @@ export function render(
   ctx.save();
   ctx.translate(canvasW / 2 - camera.x, canvasH / 2 - camera.y);
 
-  drawTerrain(ctx, state, camera, canvasW, canvasH);
+  drawWaterSurface(ctx, camera, canvasW);
   drawTerrainFeatures(ctx, state.terrain.features, camera, canvasH);
   drawParticles(ctx, state.particles);
   state.creatures.forEach(c => drawCreature(ctx, c, sub.depth));
