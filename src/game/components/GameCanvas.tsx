@@ -212,7 +212,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ progress, onGameEnd, onReturnTo
     }
 
     animFrameRef.current = requestAnimationFrame(gameLoop);
-  }, [updateHud, multiplayerRoomId, user, progress]);
+  }, [updateHud, multiplayerRoomId, user, progress, saveCheckpoint]);
 
   const endGame = useCallback((state: GameState) => {
     const totalKills = Object.values(state.killCount).reduce((a, b) => a + b, 0);
